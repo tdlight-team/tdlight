@@ -239,6 +239,18 @@ static DefaultLog default_log;
 LogInterface *const default_log_interface = &default_log;
 LogInterface *log_interface = default_log_interface;
 
+static OnFatalErrorCallback on_fatal_error_callback = nullptr;
+
+static bool use_death_handler = true;
+
+void set_log_fatal_error_callback(OnFatalErrorCallback callback) {
+  on_fatal_error_callback = callback;
+}
+
+void set_log_disable_death_handler(bool disabled) {
+  use_death_handler = !disabled;
+}
+
 void process_fatal_error(CSlice message) {
   if (0 <= max_callback_verbosity_level.load(std::memory_order_relaxed)) {
     auto callback = on_log_message_callback.load(std::memory_order_relaxed);
