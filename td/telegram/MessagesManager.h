@@ -171,6 +171,8 @@ class MessagesManager final : public Actor {
 
   static bool is_invalid_poll_message(const telegram_api::Message *message);
 
+  void memory_stats(vector<string> &output);
+  
   tl_object_ptr<telegram_api::InputPeer> get_input_peer(DialogId dialog_id, AccessRights access_rights) const;
 
   static tl_object_ptr<telegram_api::InputPeer> get_input_peer_force(DialogId dialog_id);

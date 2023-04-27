@@ -60,6 +60,7 @@ class TdDb {
     bool use_file_database_ = false;
     bool use_chat_info_database_ = false;
     bool use_message_database_ = false;
+    bool use_custom_database_format_ = false;
   };
 
   struct OpenedDatabase {
@@ -114,6 +115,10 @@ class TdDb {
 
   bool was_dialog_db_created() const {
     return was_dialog_db_created_;
+  }
+
+  bool use_custom_database_format() const {
+    return parameters_.use_custom_database_format_;
   }
 
   std::shared_ptr<FileDbInterface> get_file_db_shared();

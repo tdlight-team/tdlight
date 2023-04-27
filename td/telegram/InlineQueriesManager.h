@@ -38,6 +38,8 @@ class InlineQueriesManager final : public Actor {
  public:
   InlineQueriesManager(Td *td, ActorShared<> parent);
 
+  void memory_stats(vector<string> &output);
+
   void after_get_difference();
 
   void answer_inline_query(int64 inline_query_id, bool is_personal,

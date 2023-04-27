@@ -10,6 +10,7 @@
 #include "td/telegram/DialogId.h"
 #include "td/telegram/Document.h"
 #include "td/telegram/DocumentsManager.h"
+#include "td/telegram/MemoryManager.h"
 #include "td/telegram/FileReferenceManager.h"
 #include "td/telegram/files/FileManager.h"
 #include "td/telegram/files/FileType.h"
@@ -191,8 +192,10 @@ FileId AnimationsManager::on_get_animation(unique_ptr<Animation> new_animation, 
       LOG(DEBUG) << "Animation " << file_id << " duration has changed";
       a->duration = new_animation->duration;
     }
-    if (a->minithumbnail != new_animation->minithumbnail) {
-      a->minithumbnail = std::move(new_animation->minithumbnail);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      if (a->minithumbnail != new_animation->minithumbnail) {
+        a->minithumbnail = std::move(new_animation->minithumbnail);
+      }
     }
     if (a->thumbnail != new_animation->thumbnail) {
       if (!a->thumbnail.file_id.is_valid()) {
@@ -295,8 +298,10 @@ void AnimationsManager::create_animation(FileId file_id, string minithumbnail, P
   a->mime_type = std::move(mime_type);
   a->duration = max(duration, 0);
   a->dimensions = dimensions;
-  if (!td_->auth_manager_->is_bot()) {
-    a->minithumbnail = std::move(minithumbnail);
+  if (!G()->get_option_boolean("disable_minithumbnails")) {
+    if (!td_->auth_manager_->is_bot()) {
+      a->minithumbnail = std::move(minithumbnail);
+    }
   }
   a->thumbnail = std::move(thumbnail);
   a->animated_thumbnail = std::move(animated_thumbnail);
@@ -838,7 +843,7 @@ void AnimationsManager::send_update_saved_animations(bool from_database) {
       if (animation->animated_thumbnail.file_id.is_valid()) {
         new_saved_animation_file_ids.push_back(animation->animated_thumbnail.file_id);
       }
-    }
+      }
     std::sort(new_saved_animation_file_ids.begin(), new_saved_animation_file_ids.end());
     if (new_saved_animation_file_ids != saved_animation_file_ids_) {
       td_->file_manager_->change_files_source(get_saved_animations_file_source_id(), saved_animation_file_ids_,
@@ -887,6 +892,14 @@ void AnimationsManager::get_current_state(vector<td_api::object_ptr<td_api::Upda
   if (update_animation_search_parameters != nullptr) {
     updates.push_back(std::move(update_animation_search_parameters));
   }
+}
+
+void AnimationsManager::memory_stats(vector<string> &output) {
+  output.push_back("\"animations_\":"); output.push_back(std::to_string(animations_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"saved_animation_ids_\":"); output.push_back(std::to_string(this->saved_animation_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"saved_animation_file_ids_\":"); output.push_back(std::to_string(this->saved_animation_file_ids_.size()));
 }
 
 }  // namespace td

@@ -132,7 +132,7 @@ int main (int argc, char **argv) {
   if (argc != optind + 1) {
     usage ();
   }
- 
+
 
   struct parse *P = tl_init_parse_file (argv[optind]);
   if (!P) {
