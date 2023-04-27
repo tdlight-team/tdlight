@@ -14,6 +14,8 @@
 #include "td/telegram/DialogId.h"
 #include "td/telegram/Global.h"
 #include "td/telegram/logevent/LogEvent.h"
+#include "td/telegram/logevent/LogEventHelper.h"
+#include "td/telegram/MemoryManager.h"
 #include "td/telegram/MessageId.h"
 #include "td/telegram/MessageSender.h"
 #include "td/telegram/MessagesManager.h"
@@ -1919,6 +1921,18 @@ void PollManager::on_binlog_events(vector<BinlogEvent> &&events) {
         LOG(FATAL) << "Unsupported log event type " << event.type_;
     }
   }
+}
+
+void PollManager::memory_stats(vector<string> &output) {
+  output.push_back("\"polls_\":"); output.push_back(std::to_string(polls_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"pending_answers_\":"); output.push_back(std::to_string(pending_answers_.size()));
+  output.push_back(",");
+  output.push_back("\"poll_voters_\":"); output.push_back(std::to_string(poll_voters_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_polls_\":"); output.push_back(std::to_string(loaded_from_database_polls_.size()));
+  output.push_back(",");
+  output.push_back("\"being_closed_polls_\":"); output.push_back(std::to_string(being_closed_polls_.size()));
 }
 
 }  // namespace td

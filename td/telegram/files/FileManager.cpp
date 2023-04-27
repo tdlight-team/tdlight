@@ -14,6 +14,7 @@
 #include "td/telegram/files/FileLoaderUtils.h"
 #include "td/telegram/files/FileLocation.h"
 #include "td/telegram/files/FileLocation.hpp"
+#include "td/telegram/MemoryManager.h"
 #include "td/telegram/Global.h"
 #include "td/telegram/logevent/LogEvent.h"
 #include "td/telegram/misc.h"
@@ -867,8 +868,8 @@ FileManager::FileManager(unique_ptr<Context> context) : context_(std::move(conte
   }
 
   parent_ = context_->create_reference();
-  next_file_id();
-  next_file_node_id();
+    next_file_id();
+    next_file_node_id();
 
   G()->td_db()->with_db_path([bad_paths = &bad_paths_](CSlice path) { bad_paths->insert(path.str()); });
 }
@@ -4185,6 +4186,16 @@ void FileManager::hangup() {
   }
   is_closed_ = true;
   stop();
+}
+
+void FileManager::memory_stats(vector<string> &output) {
+  output.push_back("\"file_id_info_\":"); output.push_back(std::to_string(file_id_info_.size()));
+  output.push_back(",");
+  output.push_back("\"file_nodes_\":"); output.push_back(std::to_string(file_nodes_.size()));
+  output.push_back(",");
+  output.push_back("\"file_hash_to_file_id_\":"); output.push_back(std::to_string(file_hash_to_file_id_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"empty_file_ids_\":"); output.push_back(std::to_string(empty_file_ids_.size()));
 }
 
 void FileManager::tear_down() {

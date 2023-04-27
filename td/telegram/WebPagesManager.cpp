@@ -1845,4 +1845,17 @@ vector<FileId> WebPagesManager::get_web_page_file_ids(const WebPage *web_page) c
   return result;
 }
 
+void WebPagesManager::memory_stats(vector<string> &output) {
+  output.push_back("\"web_pages_\":"); output.push_back(std::to_string(web_pages_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_web_pages_\":"); output.push_back(std::to_string(loaded_from_database_web_pages_.size()));
+  output.push_back(",");
+  output.push_back("\"web_page_messages_\":"); output.push_back(std::to_string(web_page_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"url_to_web_page_id_\":"); output.push_back(std::to_string(url_to_web_page_id_.size()));
+  output.push_back(",");
+  output.push_back("\"url_to_file_source_id_\":"); output.push_back(std::to_string(url_to_file_source_id_.size()));
+
+}
+
 }  // namespace td

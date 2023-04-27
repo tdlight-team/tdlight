@@ -664,6 +664,23 @@ void OptionManager::set_option(const string &name, td_api::object_ptr<td_api::Op
       if (set_boolean_option("disable_network_statistics")) {
         return;
       }
+      // Start TDLight options
+      if (set_boolean_option("disable_document_filenames")) {
+        return;
+      }
+      if (set_boolean_option("disable_minithumbnails")) {
+        return;
+      }
+      if (set_boolean_option("disable_notifications")) {
+        return;
+      }
+      if (set_boolean_option("disable_group_calls")) {
+        return;
+      }
+      if (set_boolean_option("disable_auto_download")) {
+        return;
+      }
+      // End TDLight options
       if (set_boolean_option("disable_persistent_network_statistics")) {
         return;
       }
@@ -692,6 +709,20 @@ void OptionManager::set_option(const string &name, td_api::object_ptr<td_api::Op
       if (set_boolean_option("ignore_platform_restrictions")) {
         return;
       }
+      // Start TDLight options
+      if (set_boolean_option("ignore_server_deletes_and_reads")) {
+        return;
+      }
+      if (set_boolean_option("ignore_update_chat_last_message")) {
+        return;
+      }
+      if (set_boolean_option("ignore_update_chat_read_inbox")) {
+        return;
+      }
+      if (set_boolean_option("ignore_update_user_chat_action")) {
+        return;
+      }
+      // End TDLight options
       if (set_boolean_option("is_emulator")) {
         return;
       }
@@ -772,6 +803,11 @@ void OptionManager::set_option(const string &name, td_api::object_ptr<td_api::Op
       if (set_boolean_option("reuse_uploaded_photos_by_hash")) {
         return;
       }
+      // Start TDLight options
+      if (set_boolean_option("receive_access_hashes")) {
+        return;
+      }
+      // End TDLight options
       break;
     case 's':
       if (set_integer_option("storage_max_files_size")) {
