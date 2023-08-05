@@ -73,15 +73,15 @@ if (POLICY CMP0069)
 endif()
 
 # Configure CCache if available
-find_program(CCACHE_FOUND ccache)
+#find_program(CCACHE_FOUND ccache)
 #set(CCACHE_FOUND 0)
-if (CCACHE_FOUND)
-  message(STATUS "Found ccache")
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
-else()
-  message(STATUS "Could NOT find ccache (this is NOT an error)")
-endif()
+#if (CCACHE_FOUND)
+#  message(STATUS "Found ccache")
+#  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
+#  set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
+#else()
+#  message(STATUS "Could NOT find ccache (this is NOT an error)")
+#endif()
 
 set(MEMPROF "" CACHE STRING "Use one of \"ON\", \"FAST\" or \"SAFE\" to enable memory profiling. \
 Works under macOS and Linux when compiled using glibc. \
