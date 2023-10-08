@@ -38,6 +38,7 @@
 #include "td/telegram/LinkManager.h"
 #include "td/telegram/logevent/LogEvent.h"
 #include "td/telegram/logevent/LogEventHelper.h"
+#include "td/telegram/MemoryManager.h"
 #include "td/telegram/MessageSender.h"
 #include "td/telegram/MessagesManager.h"
 #include "td/telegram/MessageTtl.h"
@@ -8605,10 +8606,18 @@ class ContactsManager::UserLogEvent {
 
 void ContactsManager::save_user(User *u, UserId user_id, bool from_binlog) {
   if (!G()->use_chat_info_database()) {
+    if (u != nullptr && G()->get_option_boolean("receive_access_hashes", false)) {
+      send_closure(G()->td(), &Td::send_update,
+                   make_tl_object<td_api::updateAccessHash>(get_user_access_hash_object(user_id, u)));
+    }
     return;
   }
   CHECK(u != nullptr);
   if (!u->is_saved || !u->is_status_saved) {  // TODO more effective handling of !u->is_status_saved
+    if (u != nullptr && G()->get_option_boolean("receive_access_hashes", false)) {
+      send_closure(G()->td(), &Td::send_update,
+                   make_tl_object<td_api::updateAccessHash>(get_user_access_hash_object(user_id, u)));
+    }
     if (!from_binlog) {
       auto log_event = UserLogEvent(user_id, u);
       auto storer = get_log_event_storer(log_event);
@@ -9184,10 +9193,18 @@ class ContactsManager::ChannelLogEvent {
 
 void ContactsManager::save_channel(Channel *c, ChannelId channel_id, bool from_binlog) {
   if (!G()->use_chat_info_database()) {
+    if (c != nullptr && G()->get_option_boolean("receive_access_hashes", false)) {
+      send_closure(G()->td(), &Td::send_update,
+                   make_tl_object<td_api::updateAccessHash>(get_channel_access_hash_object(channel_id, c)));
+    }
     return;
   }
   CHECK(c != nullptr);
   if (!c->is_saved) {
+    if (c != nullptr && G()->get_option_boolean("receive_access_hashes", false)) {
+      send_closure(G()->td(), &Td::send_update,
+                   make_tl_object<td_api::updateAccessHash>(get_channel_access_hash_object(channel_id, c)));
+    }
     if (!from_binlog) {
       auto log_event = ChannelLogEvent(channel_id, c);
       auto storer = get_log_event_storer(log_event);
@@ -16581,6 +16598,32 @@ tl_object_ptr<td_api::user> ContactsManager::get_user_object(UserId user_id) con
   return get_user_object(user_id, get_user(user_id));
 }
 
+tl_object_ptr<td_api::accessHash> ContactsManager::get_user_access_hash_object(UserId user_id, const User *u) const {
+  if (u == nullptr) {
+    return nullptr;
+  }
+  if (!u->is_min_access_hash && u->access_hash != 0) {
+    tl_object_ptr<td_api::AccessHashType> type = make_tl_object<td_api::accessHashTypeUser>();
+    DialogId dialog_id(user_id);
+    return make_tl_object<td_api::accessHash>(dialog_id.get(), std::move(type), u->access_hash);
+  } else {
+    return nullptr;
+  }
+}
+
+tl_object_ptr<td_api::accessHash> ContactsManager::get_channel_access_hash_object(ChannelId channel_id, const Channel *c) const {
+  if (c == nullptr) {
+    return nullptr;
+  }
+  if (c->access_hash != 0) {
+    tl_object_ptr<td_api::AccessHashType> type = make_tl_object<td_api::accessHashTypeChannel>();
+    DialogId dialog_id(channel_id);
+    return make_tl_object<td_api::accessHash>(dialog_id.get(), std::move(type), c->access_hash);
+  } else {
+    return nullptr;
+  }
+}
+
 tl_object_ptr<td_api::user> ContactsManager::get_user_object(UserId user_id, const User *u) const {
   if (u == nullptr) {
     return nullptr;
@@ -16994,4 +17037,102 @@ void ContactsManager::get_current_state(vector<td_api::object_ptr<td_api::Update
   });
 }
 
+void ContactsManager::memory_stats(vector<string> &output) {
+
+  output.push_back("\"users_\":"); output.push_back(std::to_string(users_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"users_full_\":"); output.push_back(std::to_string(users_full_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"user_photos_\":"); output.push_back(std::to_string(user_photos_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"unknown_users_\":"); output.push_back(std::to_string(unknown_users_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_user_photos_\":"); output.push_back(std::to_string(pending_user_photos_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"user_profile_photo_file_source_ids_\":"); output.push_back(std::to_string(user_profile_photo_file_source_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"my_photo_file_id_\":"); output.push_back(std::to_string(my_photo_file_id_.size()));
+  output.push_back(",");
+  output.push_back("\"chats_\":"); output.push_back(std::to_string(chats_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"chats_full_\":"); output.push_back(std::to_string(chats_full_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"unknown_chats_\":"); output.push_back(std::to_string(unknown_chats_.size()));
+  output.push_back(",");
+  output.push_back("\"chat_full_file_source_ids_\":"); output.push_back(std::to_string(chat_full_file_source_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"min_channels_\":"); output.push_back(std::to_string(min_channels_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"channels_\":"); output.push_back(std::to_string(channels_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"channels_full_\":"); output.push_back(std::to_string(channels_full_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"unknown_channels_\":"); output.push_back(std::to_string(unknown_channels_.size()));
+  output.push_back(",");
+  output.push_back("\"channel_full_file_source_ids_\":"); output.push_back(std::to_string(channel_full_file_source_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"secret_chats_\":"); output.push_back(std::to_string(secret_chats_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"unknown_secret_chats_\":"); output.push_back(std::to_string(unknown_secret_chats_.size()));
+  output.push_back(",");
+  output.push_back("\"secret_chats_with_user_\":"); output.push_back(std::to_string(secret_chats_with_user_.size()));
+  output.push_back(",");
+  output.push_back("\"invite_link_infos_\":"); output.push_back(std::to_string(invite_link_infos_.size()));
+  output.push_back(",");
+  output.push_back("\"dialog_access_by_invite_link_\":"); output.push_back(std::to_string(dialog_access_by_invite_link_.size()));
+  output.push_back(",");
+  output.push_back("\"load_user_from_database_queries_\":"); output.push_back(std::to_string(load_user_from_database_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_users_\":"); output.push_back(std::to_string(loaded_from_database_users_.size()));
+  output.push_back(",");
+  output.push_back("\"unavailable_user_fulls_\":"); output.push_back(std::to_string(unavailable_user_fulls_.size()));
+  output.push_back(",");
+  output.push_back("\"load_chat_from_database_queries_\":"); output.push_back(std::to_string(load_chat_from_database_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_chats_\":"); output.push_back(std::to_string(loaded_from_database_chats_.size()));
+  output.push_back(",");
+  output.push_back("\"unavailable_chat_fulls_\":"); output.push_back(std::to_string(unavailable_chat_fulls_.size()));
+  output.push_back(",");
+  output.push_back("\"load_channel_from_database_queries_\":"); output.push_back(std::to_string(load_channel_from_database_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_channels_\":"); output.push_back(std::to_string(loaded_from_database_channels_.size()));
+  output.push_back(",");
+  output.push_back("\"unavailable_channel_fulls_\":"); output.push_back(std::to_string(unavailable_channel_fulls_.size()));
+  output.push_back(",");
+  output.push_back("\"load_secret_chat_from_database_queries_\":"); output.push_back(std::to_string(load_secret_chat_from_database_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_secret_chats_\":"); output.push_back(std::to_string(loaded_from_database_secret_chats_.size()));
+  output.push_back(",");
+  output.push_back("\"dialog_administrators_\":"); output.push_back(std::to_string(dialog_administrators_.size()));
+  output.push_back(",");
+  output.push_back("\"uploaded_profile_photos_\":"); output.push_back(std::to_string(uploaded_profile_photos_.size()));
+  output.push_back(",");
+  output.push_back("\"imported_contacts_\":"); output.push_back(std::to_string(imported_contacts_.size()));
+  output.push_back(",");
+  output.push_back("\"cached_channel_participants_\":"); output.push_back(std::to_string(cached_channel_participants_.size()));
+  output.push_back(",");
+  output.push_back("\"load_contacts_queries_\":"); output.push_back(std::to_string(load_contacts_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"load_imported_contacts_queries_\":"); output.push_back(std::to_string(load_imported_contacts_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"all_imported_contacts_\":"); output.push_back(std::to_string(all_imported_contacts_.size()));
+  output.push_back(",");
+  output.push_back("\"users_nearby_\":"); output.push_back(std::to_string(users_nearby_.size()));
+  output.push_back(",");
+  output.push_back("\"channels_nearby_\":"); output.push_back(std::to_string(channels_nearby_.size()));
+  output.push_back(",");
+  output.push_back("\"all_users_nearby_\":"); output.push_back(std::to_string(all_users_nearby_.size()));
+  output.push_back(",");
+  output.push_back("\"linked_channel_ids_\":"); output.push_back(std::to_string(linked_channel_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"restricted_user_ids_\":"); output.push_back(std::to_string(restricted_user_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"restricted_channel_ids_\":"); output.push_back(std::to_string(restricted_channel_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"next_all_imported_contacts_\":"); output.push_back(std::to_string(next_all_imported_contacts_.size()));
+  output.push_back(",");
+  output.push_back("\"imported_contact_user_ids_\":"); output.push_back(std::to_string(imported_contact_user_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"unimported_contact_invites_\":"); output.push_back(std::to_string(unimported_contact_invites_.size()));
+}
 }  // namespace td

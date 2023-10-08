@@ -31,6 +31,12 @@
 #include "td/utils/Slice.h"
 #include "td/utils/Status.h"
 
+#ifdef __linux__
+  #include <malloc.h>
+#endif
+#ifdef _WIN32
+  #include <malloc.h>
+#endif
 #include <memory>
 #include <unordered_map>
 #include <utility>
@@ -91,6 +97,7 @@ class StateManager;
 class StatisticsManager;
 class StickersManager;
 class StorageManager;
+class MemoryManager;
 class StoryManager;
 class ThemeManager;
 class TimeZoneManager;
@@ -257,6 +264,8 @@ class Td final : public Actor {
   ActorOwn<VideoNotesManager> video_notes_manager_actor_;
   unique_ptr<VoiceNotesManager> voice_notes_manager_;
   ActorOwn<VoiceNotesManager> voice_notes_manager_actor_;
+  unique_ptr<MemoryManager> memory_manager_;
+  ActorOwn<MemoryManager> memory_manager_actor_;
   unique_ptr<WebPagesManager> web_pages_manager_;
   ActorOwn<WebPagesManager> web_pages_manager_actor_;
 
@@ -653,6 +662,8 @@ class Td final : public Actor {
   void on_request(uint64 id, td_api::getStorageStatisticsFast &request);
 
   void on_request(uint64 id, td_api::getDatabaseStatistics &request);
+
+  void on_request(uint64 id, td_api::getMemoryStatistics &request);
 
   void on_request(uint64 id, td_api::optimizeStorage &request);
 
@@ -1906,7 +1917,7 @@ class Td final : public Actor {
   static td_api::object_ptr<td_api::Object> do_static_request(const td_api::addLogMessage &request);
   static td_api::object_ptr<td_api::Object> do_static_request(td_api::testReturnError &request);
 
-  static DbKey as_db_key(string key);
+  static DbKey as_db_key(string key, bool custom_db);
 
   struct Parameters {
     int32 api_id_ = 0;

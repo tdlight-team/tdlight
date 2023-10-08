@@ -94,6 +94,8 @@ class FileReferenceManager final : public Actor {
   template <class ParserT>
   FileSourceId parse_file_source(Td *td, ParserT &parser);
 
+  void memory_stats(vector<string> &output);
+
  private:
   struct Destination {
     NodeId node_id;

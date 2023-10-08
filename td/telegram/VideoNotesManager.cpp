@@ -82,8 +82,10 @@ FileId VideoNotesManager::on_get_video_note(unique_ptr<VideoNote> new_video_note
       v->dimensions = new_video_note->dimensions;
       v->waveform = std::move(new_video_note->waveform);
     }
-    if (v->minithumbnail != new_video_note->minithumbnail) {
-      v->minithumbnail = std::move(new_video_note->minithumbnail);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      if (v->minithumbnail != new_video_note->minithumbnail) {
+        v->minithumbnail = std::move(new_video_note->minithumbnail);
+      }
     }
     if (v->thumbnail != new_video_note->thumbnail) {
       if (!v->thumbnail.file_id.is_valid()) {
@@ -169,7 +171,7 @@ void VideoNotesManager::create_video_note(FileId file_id, string minithumbnail, 
     LOG(INFO) << "Receive wrong video note dimensions " << dimensions;
   }
   v->waveform = std::move(waveform);
-  if (!td_->auth_manager_->is_bot()) {
+  if (!td_->auth_manager_->is_bot() && !G()->get_option_boolean("disable_minithumbnails")) {
     v->minithumbnail = std::move(minithumbnail);
   }
   v->thumbnail = std::move(thumbnail);
@@ -260,6 +262,10 @@ tl_object_ptr<telegram_api::InputMedia> VideoNotesManager::get_input_media(
   }
 
   return nullptr;
+}
+
+void VideoNotesManager::memory_stats(vector<string> &output) {
+  output.push_back("\"video_notes_\":"); output.push_back(std::to_string(video_notes_.calc_size()));
 }
 
 }  // namespace td
