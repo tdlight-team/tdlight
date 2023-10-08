@@ -1505,4 +1505,18 @@ void BackgroundManager::memory_stats(vector<string> &output) {
   output.push_back("\"installed_backgrounds_\":"); output.push_back(std::to_string(installed_backgrounds_.size()));
 }
 
+void BackgroundManager::memory_stats(vector<string> &output) {
+  output.push_back("\"backgrounds_\":"); output.push_back(std::to_string(backgrounds_.size()));
+  output.push_back(",");
+  output.push_back("\"background_id_to_file_source_id_\":"); output.push_back(std::to_string(background_id_to_file_source_id_.size()));
+  output.push_back(",");
+  output.push_back("\"name_to_background_id_\":"); output.push_back(std::to_string(name_to_background_id_.size()));
+  output.push_back(",");
+  output.push_back("\"file_id_to_background_id_\":"); output.push_back(std::to_string(file_id_to_background_id_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_backgrounds_\":"); output.push_back(std::to_string(loaded_from_database_backgrounds_.size()));
+  output.push_back(",");
+  output.push_back("\"installed_backgrounds_\":"); output.push_back(std::to_string(installed_backgrounds_.size()));
+}
+
 }  // namespace td

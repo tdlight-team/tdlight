@@ -784,6 +784,23 @@ void OptionManager::set_option(const string &name, td_api::object_ptr<td_api::Op
       if (set_boolean_option("disable_network_statistics")) {
         return;
       }
+      // Start TDLight options
+      if (set_boolean_option("disable_document_filenames")) {
+        return;
+      }
+      if (set_boolean_option("disable_minithumbnails")) {
+        return;
+      }
+      if (set_boolean_option("disable_notifications")) {
+        return;
+      }
+      if (set_boolean_option("disable_group_calls")) {
+        return;
+      }
+      if (set_boolean_option("disable_auto_download")) {
+        return;
+      }
+      // End TDLight options
       if (set_boolean_option("disable_persistent_network_statistics")) {
         return;
       }
