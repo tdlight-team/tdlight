@@ -23,14 +23,14 @@ void store(const DialogPhoto &dialog_photo, StorerT &storer) {
   BEGIN_STORE_FLAGS();
   STORE_FLAG(has_file_ids);
   STORE_FLAG(dialog_photo.has_animation);
-  STORE_FLAG(has_minithumbnail);
+  STORE_FLAG(!G()->get_option_boolean("disable_minithumbnails") && has_minithumbnail);
   STORE_FLAG(dialog_photo.is_personal);
   END_STORE_FLAGS();
   if (has_file_ids) {
     store(dialog_photo.small_file_id, storer);
     store(dialog_photo.big_file_id, storer);
   }
-  if (has_minithumbnail) {
+  if (!G()->get_option_boolean("disable_minithumbnails") && has_minithumbnail) {
     store(dialog_photo.minithumbnail, storer);
   }
 }
@@ -52,7 +52,11 @@ void parse(DialogPhoto &dialog_photo, ParserT &parser) {
     parse(dialog_photo.big_file_id, parser);
   }
   if (has_minithumbnail) {
-    parse(dialog_photo.minithumbnail, parser);
+    std::basic_string<char> minithumbnail;
+    parse(minithumbnail, parser);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      dialog_photo.minithumbnail = minithumbnail;
+    }
   }
 }
 
@@ -75,7 +79,7 @@ void store(const Photo &photo, StorerT &storer) {
   bool has_sticker_photo_size = photo.sticker_photo_size != nullptr;
   BEGIN_STORE_FLAGS();
   STORE_FLAG(photo.has_stickers);
-  STORE_FLAG(has_minithumbnail);
+  STORE_FLAG(!G()->get_option_boolean("disable_minithumbnails") && has_minithumbnail);
   STORE_FLAG(has_animations);
   STORE_FLAG(has_sticker_photo_size);
   END_STORE_FLAGS();
@@ -85,7 +89,7 @@ void store(const Photo &photo, StorerT &storer) {
   if (photo.has_stickers) {
     store(photo.sticker_file_ids, storer);
   }
-  if (has_minithumbnail) {
+  if (!G()->get_option_boolean("disable_minithumbnails") && has_minithumbnail) {
     store(photo.minithumbnail, storer);
   }
   if (has_animations) {
@@ -116,7 +120,11 @@ void parse(Photo &photo, ParserT &parser) {
     parse(photo.sticker_file_ids, parser);
   }
   if (has_minithumbnail) {
-    parse(photo.minithumbnail, parser);
+    std::basic_string<char> minithumbnail;
+    parse(minithumbnail, parser);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      photo.minithumbnail = minithumbnail;
+    }
   }
   if (has_animations) {
     parse(photo.animations, parser);

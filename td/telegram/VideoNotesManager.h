@@ -38,6 +38,8 @@ class VideoNotesManager final : public Actor {
   VideoNotesManager &operator=(VideoNotesManager &&) = delete;
   ~VideoNotesManager() final;
 
+  void memory_stats(vector<string> &output);
+
   int32 get_video_note_duration(FileId file_id) const;
 
   tl_object_ptr<td_api::videoNote> get_video_note_object(FileId file_id) const;

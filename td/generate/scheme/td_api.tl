@@ -561,6 +561,21 @@ userTypeBot can_be_edited:Bool can_join_groups:Bool can_read_all_group_messages:
 //@description No information on the user besides the user identifier is available, yet this user has not been deleted. This object is extremely rare and must be handled like a deleted user. It is not possible to perform any actions on users of this type
 userTypeUnknown = UserType;
 
+//@class AccessHashType @description Represents the type of an access hash. The following types are possible: user, channel
+
+//@description An access hash of an user
+accessHashTypeUser = AccessHashType;
+
+//@description An access hash of a channel
+accessHashTypeChannel = AccessHashType;
+
+
+//@description Access hash
+//@chat_id Chat identifier
+//@type Access hash type
+//@access_hash Access hash
+accessHash chat_id:int53 type:AccessHashType access_hash:int64 = AccessHash;
+
 
 //@description Represents a command supported by a bot @command Text of the bot command @param_description Description of the bot command
 botCommand command:string description:string = BotCommand;
@@ -5373,6 +5388,10 @@ storageStatisticsFast files_size:int53 file_count:int32 database_size:int53 lang
 //@statistics Database statistics in an unspecified human-readable format
 databaseStatistics statistics:string = DatabaseStatistics;
 
+//@description Contains memory statistics
+//@statistics Memory statistics in an unspecified human-readable format
+memoryStatistics statistics:string = MemoryStatistics;
+
 
 //@class NetworkType @description Represents the type of a network
 
@@ -5954,6 +5973,9 @@ updateUserStatus user_id:int53 status:UserStatus = Update;
 
 //@description Some data of a user has changed. This update is guaranteed to come before the user identifier is returned to the application @user New data about the user
 updateUser user:user = Update;
+
+//@description Some data of a user or a chat has changed. This update is guaranteed to come before the user or chat identifier is returned to the application @access_hash Access hash
+updateAccessHash access_hash:accessHash = Update;
 
 //@description Some data of a basic group has changed. This update is guaranteed to come before the basic group identifier is returned to the application @basic_group New data about the group
 updateBasicGroup basic_group:basicGroup = Update;
@@ -8780,6 +8802,10 @@ getStorageStatisticsFast = StorageStatisticsFast;
 
 //@description Returns database statistics
 getDatabaseStatistics = DatabaseStatistics;
+
+//@description Returns memory statistics
+//@full Full memory statistics calculation
+getMemoryStatistics full:Bool = MemoryStatistics;
 
 //@description Optimizes storage usage, i.e. deletes some files and returns new storage usage statistics. Secret thumbnails can't be deleted
 //@size Limit on the total size of files after deletion, in bytes. Pass -1 to use the default limit
