@@ -130,6 +130,7 @@
 #include "td/telegram/StickersManager.h"
 #include "td/telegram/StickerType.h"
 #include "td/telegram/StorageManager.h"
+#include "td/telegram/MemoryManager.h"
 #include "td/telegram/StoryId.h"
 #include "td/telegram/StoryListId.h"
 #include "td/telegram/StoryManager.h"
@@ -2923,6 +2924,7 @@ bool Td::is_preauthentication_request(int32 id) {
     case td_api::getStorageStatistics::ID:
     case td_api::getStorageStatisticsFast::ID:
     case td_api::getDatabaseStatistics::ID:
+    case td_api::getMemoryStatistics::ID:
     case td_api::setNetworkType::ID:
     case td_api::getNetworkStatistics::ID:
     case td_api::addNetworkStatistics::ID:
@@ -2975,12 +2977,15 @@ vector<td_api::object_ptr<td_api::Update>> Td::get_fake_current_state() const {
   return updates;
 }
 
-DbKey Td::as_db_key(string key) {
+DbKey Td::as_db_key(string key, bool custom_db) {
   // Database will still be effectively not encrypted, but
   // 1. SQLite database will be protected from corruption, because that's how sqlcipher works
   // 2. security through obscurity
   // 3. no need for reencryption of SQLite database
   if (key.empty()) {
+    if (custom_db) {
+      return DbKey::empty();
+    }
     return DbKey::raw_key("cucumber");
   }
   return DbKey::raw_key(std::move(key));
@@ -3323,6 +3328,8 @@ void Td::dec_actor_refcnt() {
       LOG(DEBUG) << "StatisticsManager was cleared" << timer;
       stickers_manager_.reset();
       LOG(DEBUG) << "StickersManager was cleared" << timer;
+      memory_manager_.reset();
+      LOG(DEBUG) << "MemoryManager was cleared" << timer;
       story_manager_.reset();
       LOG(DEBUG) << "StoryManager was cleared" << timer;
       theme_manager_.reset();
@@ -3353,9 +3360,20 @@ void Td::dec_actor_refcnt() {
       close_flag_ = 4;
     } else if (close_flag_ == 4) {
       on_closed();
+#ifdef __linux__
+  #if defined(__GLIBC__) && !defined(__UCLIBC__) && !defined(__MUSL__)
+      malloc_trim(0);
+  #endif
+#endif
     } else {
       UNREACHABLE();
     }
+  } else {
+#ifdef __linux__
+  #if defined(__GLIBC__) && !defined(__UCLIBC__) && !defined(__MUSL__)
+    malloc_trim(0);
+  #endif
+#endif
   }
 }
 
@@ -3530,6 +3548,8 @@ void Td::clear() {
   LOG(DEBUG) << "StatisticsManager actor was cleared" << timer;
   stickers_manager_actor_.reset();
   LOG(DEBUG) << "StickersManager actor was cleared" << timer;
+  memory_manager_actor_.reset();
+  LOG(DEBUG) << "MemoryManager actor was cleared" << timer;
   story_manager_actor_.reset();
   LOG(DEBUG) << "StoryManager actor was cleared" << timer;
   theme_manager_actor_.reset();
@@ -4028,6 +4048,9 @@ void Td::init_managers() {
   stickers_manager_ = make_unique<StickersManager>(this, create_reference());
   stickers_manager_actor_ = register_actor("StickersManager", stickers_manager_.get());
   G()->set_stickers_manager(stickers_manager_actor_.get());
+  memory_manager_ = make_unique<MemoryManager>(this, create_reference());
+  memory_manager_actor_ = register_actor("MemoryManager", memory_manager_.get());
+  G()->set_memory_manager(memory_manager_actor_.get());
   story_manager_ = make_unique<StoryManager>(this, create_reference());
   story_manager_actor_ = register_actor("StoryManager", story_manager_.get());
   G()->set_story_manager(story_manager_actor_.get());
@@ -4223,8 +4246,9 @@ Result<std::pair<Td::Parameters, TdDb::Parameters>> Td::get_parameters(
   result.first.enable_storage_optimizer_ = parameters->enable_storage_optimizer_;
   result.first.ignore_file_names_ = parameters->ignore_file_names_;
 
-  result.second.encryption_key_ = as_db_key(std::move(parameters->database_encryption_key_));
-  result.second.database_directory_ = std::move(parameters->database_directory_);
+  result.second.encryption_key_ = as_db_key(std::move(parameters->database_encryption_key_), Global::get_use_custom_database(parameters->database_directory_));
+  result.second.database_directory_ = Global::get_database_directory_path(parameters->database_directory_);
+  result.second.use_custom_database_format_ = Global::get_use_custom_database(parameters->database_directory_);
   result.second.files_directory_ = std::move(parameters->files_directory_);
   result.second.is_test_dc_ = parameters->use_test_dc_;
   result.second.use_file_database_ = parameters->use_file_database_;
@@ -4271,7 +4295,7 @@ void Td::on_request(uint64 id, const td_api::setTdlibParameters &request) {
 
 void Td::on_request(uint64 id, td_api::setDatabaseEncryptionKey &request) {
   CREATE_OK_REQUEST_PROMISE();
-  G()->td_db()->get_binlog()->change_key(as_db_key(std::move(request.new_encryption_key_)), std::move(promise));
+  G()->td_db()->get_binlog()->change_key(as_db_key(std::move(request.new_encryption_key_), G()->use_custom_database_format()), std::move(promise));
 }
 
 void Td::on_request(uint64 id, const td_api::getAuthorizationState &request) {
@@ -4402,6 +4426,7 @@ void Td::on_request(uint64 id, const td_api::getCurrentState &request) {
 
     dialog_filter_manager_->get_current_state(updates);
 
+    memory_manager_->get_current_state(updates);
     messages_manager_->get_current_state(updates);
 
     notification_manager_->get_current_state(updates);
@@ -4935,6 +4960,18 @@ void Td::on_request(uint64 id, td_api::getDatabaseStatistics &request) {
     }
   });
   send_closure(storage_manager_, &StorageManager::get_database_stats, std::move(query_promise));
+}
+void Td::on_request(uint64 id, td_api::getMemoryStatistics &request) {
+  CREATE_REQUEST_PROMISE();
+  auto query_promise = PromiseCreator::lambda([promise = std::move(promise)](Result<MemoryStats> result) mutable {
+    if (result.is_error()) {
+      promise.set_error(result.move_as_error());
+    } else {
+      promise.set_value(result.ok().get_memory_statistics_object());
+    }
+  });
+
+  memory_manager_->get_memory_stats(request.full_, std::move(query_promise));
 }
 
 void Td::on_request(uint64 id, td_api::optimizeStorage &request) {
