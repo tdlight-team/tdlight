@@ -372,8 +372,16 @@ Status TdDb::init_sqlite(const Parameters &parameters, const DbKey &key, const D
   sql_connection_ = std::make_shared<SqliteConnectionSafe>(sql_database_path, key, db_instance.get_cipher_version());
   sql_connection_->set(std::move(db_instance));
   auto &db = sql_connection_->get();
-  TRY_STATUS(db.exec("PRAGMA journal_mode=WAL"));
-  TRY_STATUS(db.exec("PRAGMA secure_delete=1"));
+  if (parameters.use_custom_database_format_) {
+    TRY_STATUS(db.exec("PRAGMA journal_mode=OFF"));
+    TRY_STATUS(db.exec("PRAGMA synchronous=OFF"))
+    TRY_STATUS(db.exec("PRAGMA temp_store=MEMORY"));
+    TRY_STATUS(db.exec("PRAGMA secure_delete=0"));
+    TRY_STATUS(db.exec("PRAGMA mmap_size=30000000000"));
+  } else {
+    TRY_STATUS(db.exec("PRAGMA journal_mode=WAL"));
+    TRY_STATUS(db.exec("PRAGMA secure_delete=1"));
+  }
 
   // Init databases
   // Do initialization once and before everything else to avoid "database is locked" error.
