@@ -33,6 +33,8 @@ class VideoNotesManager final : public Actor {
   VideoNotesManager &operator=(VideoNotesManager &&) = delete;
   ~VideoNotesManager() final;
 
+  void memory_stats(vector<string> &output);
+
   int32 get_video_note_duration(FileId file_id) const;
 
   TranscriptionInfo *get_video_note_transcription_info(FileId file_id, bool allow_creation);

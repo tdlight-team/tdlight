@@ -7464,6 +7464,7 @@ void update_message_content_file_id_remote(MessageContent *content, FileId file_
 }
 
 FileId get_message_content_thumbnail_file_id(const MessageContent *content, const Td *td) {
+  if (!G()->get_option_boolean("disable_minithumbnails")) {
   switch (content->get_type()) {
     case MessageContentType::Animation:
       return td->animations_manager_->get_animation_thumbnail_file_id(
@@ -7489,6 +7490,7 @@ FileId get_message_content_thumbnail_file_id(const MessageContent *content, cons
       return FileId();
     default:
       break;
+    }
   }
   return FileId();
 }

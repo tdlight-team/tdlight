@@ -96,8 +96,10 @@ FileId VideosManager::on_get_video(unique_ptr<Video> new_video, bool replace) {
       LOG(DEBUG) << "Video " << file_id << " file name has changed";
       v->file_name = std::move(new_video->file_name);
     }
-    if (v->minithumbnail != new_video->minithumbnail) {
-      v->minithumbnail = std::move(new_video->minithumbnail);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      if (v->minithumbnail != new_video->minithumbnail) {
+        v->minithumbnail = std::move(new_video->minithumbnail);
+      }
     }
     if (v->thumbnail != new_video->thumbnail) {
       if (!v->thumbnail.file_id.is_valid()) {
@@ -198,7 +200,7 @@ void VideosManager::create_video(FileId file_id, string minithumbnail, PhotoSize
   v->duration = max(duration, 0);
   v->precise_duration = duration == 0 ? 0.0 : clamp(precise_duration, duration - 1.0, duration + 0.0);
   v->dimensions = dimensions;
-  if (!td_->auth_manager_->is_bot()) {
+  if (!td_->auth_manager_->is_bot() && G()->get_option_boolean("disable_minithumbnails")) {
     v->minithumbnail = std::move(minithumbnail);
   }
   v->thumbnail = std::move(thumbnail);
@@ -330,6 +332,10 @@ string VideosManager::get_video_search_text(FileId file_id) const {
   auto *video = get_video(file_id);
   CHECK(video != nullptr);
   return video->file_name;
+}
+
+void VideosManager::memory_stats(vector<string> &output) {
+  output.push_back("\"videos_\":"); output.push_back(std::to_string(videos_.calc_size()));
 }
 
 }  // namespace td
