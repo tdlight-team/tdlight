@@ -6,7 +6,7 @@
     <MoreInfo>https://core.telegram.org/tdlib</MoreInfo>
     <Tags>Telegram, TDLib, library, client, API</Tags>
     <License>LICENSE_1_0.txt</License>
-    <ReleaseNotes>https://github.com/tdlib/td/blob/master/CHANGELOG.md</ReleaseNotes>
+    <ReleaseNotes>https://github.com/tdlight-team/tdlight/blob/master/CHANGELOG.md</ReleaseNotes>
   </Metadata>
   <Installation Scope="Global">
     <InstallationTarget Id="Microsoft.ExtensionSDK" TargetPlatformIdentifier="UAP" TargetPlatformVersion="v0.8.0.0" SdkName="Telegram.Td.UWP" SdkVersion="1.0" />

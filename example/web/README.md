@@ -26,4 +26,4 @@ cd <path to TDLib sources>/example/web
 
 ## Using tdweb NPM package
 
-See [tdweb](https://www.npmjs.com/package/tdweb) or [README.md](https://github.com/tdlib/td/tree/master/example/web/tdweb/README.md) for package documentation.
+See [tdweb](https://www.npmjs.com/package/tdweb) or [README.md](https://github.com/tdlight-team/tdlight/tree/master/example/web/tdweb/README.md) for package documentation.

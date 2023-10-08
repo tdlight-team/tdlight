@@ -47,6 +47,8 @@ class PollManager final : public Actor {
   PollManager &operator=(PollManager &&) = delete;
   ~PollManager() final;
 
+  void memory_stats(vector<string> &output);
+
   static bool is_local_poll_id(PollId poll_id);
 
   PollId create_poll(string &&question, vector<string> &&options, bool is_anonymous, bool allow_multiple_answers,

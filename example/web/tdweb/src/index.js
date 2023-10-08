@@ -65,7 +65,7 @@ class TdClient {
    *
    * If the query contains the field '@extra', the same field will be added into the result.
    *
-   * @param {Object} query - The query for TDLib. See the [td_api.tl]{@link https://github.com/tdlib/td/blob/master/td/generate/scheme/td_api.tl} scheme or
+   * @param {Object} query - The query for TDLib. See the [td_api.tl]{@link https://github.com/tdlight-team/tdlight/blob/master/td/generate/scheme/td_api.tl} scheme or
    *                         the automatically generated [HTML documentation]{@link https://core.telegram.org/tdlib/docs/td__api_8h.html}
    *                         for a list of all available TDLib [methods]{@link https://core.telegram.org/tdlib/docs/classtd_1_1td__api_1_1_function.html} and
    *                         [classes]{@link https://core.telegram.org/tdlib/docs/classtd_1_1td__api_1_1_object.html}.

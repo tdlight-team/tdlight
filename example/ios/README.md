@@ -4,7 +4,7 @@ Below are instructions for building TDLib for iOS, watchOS, tvOS, and also macOS
 
 If you need only a macOS build for the current architecture, take a look at [TDLib build instructions generator](https://tdlib.github.io/td/build.html).
 
-For example of usage take a look at our [Swift example](https://github.com/tdlib/td/tree/master/example/swift).
+For example of usage take a look at our [Swift example](https://github.com/tdlight-team/tdlight/tree/master/example/swift).
 
 To compile `TDLib` you will need to:
 * Install the latest Xcode via `xcode-select --install` or downloading it from [Xcode website](https://developer.apple.com/xcode/).
@@ -37,7 +37,7 @@ cd <path to TDLib sources>/example/ios
 ```
 This may take a while, because TDLib will be built about 16 times.
 Resulting XCFramework will work on any architecture and even on a simulator.
-We use [CMake/iOS.cmake](https://github.com/tdlib/td/blob/master/CMake/iOS.cmake) toolchain, other toolchains may work too.
+We use [CMake/iOS.cmake](https://github.com/tdlight-team/tdlight/blob/master/CMake/iOS.cmake) toolchain, other toolchains may work too.
 
 Built libraries and XCFramework will be stored in `tdjson` directory.
 

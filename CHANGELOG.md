@@ -1024,7 +1024,7 @@ Changes in 1.5.0 (9 Sep 2019):
 * Added the class `chatEventPollStopped` representing the closing of a poll in a message in the chat event log.
 * Added ability to specify the exact types of problems with a call in the method `sendCallRating` and
   the new class `CallProblem`.
-* Changes in [tdweb](https://github.com/tdlib/td/blob/master/example/web/):
+* Changes in [tdweb](https://github.com/tdlight-team/tdlight/blob/master/example/web/):
   - Supported non-zero `offset` and `limit` in `readFilePart`.
 
 -----------------------------------------------------------------------------------------------------------------------
@@ -1034,7 +1034,7 @@ Changes in 1.4.0 (1 May 2019):
 * Added a [TDLib build instructions generator](https://tdlib.github.io/td/build.html), covering in details
   TDLib building on the most popular operating systems.
 * Added an example of TDLib building and usage from a browser.
-  See https://github.com/tdlib/td/blob/master/example/web/ for more details.
+  See https://github.com/tdlight-team/tdlight/blob/master/example/web/ for more details.
 * Allowed to pass NULL pointer to `td_json_client_execute` instead of a previously created JSON client.
   Now you can use synchronous TDLib methods through a JSON interface before creating a TDLib JSON client.
 * Added support for media streaming by allowing to download any part of a file:
@@ -1285,7 +1285,7 @@ Changes in 1.4.0 (1 May 2019):
 
 Changes in 1.3.0 (5 Sep 2018):
 
-* Added a review of existing TDLib based [frameworks](https://github.com/tdlib/td/blob/master/example/README.md)
+* Added a review of existing TDLib based [frameworks](https://github.com/tdlight-team/tdlight/blob/master/example/README.md)
   in different programming languages.
 * Added a [Getting started](https://core.telegram.org/tdlib/getting-started) guide describing the main TDLib concepts
   and basic principles required for library usage.

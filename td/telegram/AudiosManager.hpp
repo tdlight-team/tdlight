@@ -15,6 +15,7 @@
 #include "td/utils/common.h"
 #include "td/utils/tl_helpers.h"
 
+
 namespace td {
 
 template <class StorerT>
@@ -99,7 +100,13 @@ FileId AudiosManager::parse_audio(ParserT &parser) {
     has_date = false;
   }
   if (has_file_name) {
-    parse(audio->file_name, parser);
+    string tmp_filename;
+    parse(tmp_filename, parser);
+    if (G()->get_option_boolean("disable_document_filenames")) {
+      audio->file_name = "0";
+    } else {
+      audio->file_name = tmp_filename;
+    }
   }
   if (has_mime_type) {
     parse(audio->mime_type, parser);
@@ -114,7 +121,11 @@ FileId AudiosManager::parse_audio(ParserT &parser) {
     parse(audio->performer, parser);
   }
   if (has_minithumbnail) {
-    parse(audio->minithumbnail, parser);
+    string tmp_minithumbnail;
+    parse(tmp_minithumbnail, parser);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      audio->minithumbnail = tmp_minithumbnail;
+    }
   }
   if (has_thumbnail) {
     parse(audio->thumbnail, parser);

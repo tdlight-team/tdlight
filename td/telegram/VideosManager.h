@@ -30,6 +30,8 @@ class VideosManager {
   VideosManager &operator=(VideosManager &&) = delete;
   ~VideosManager();
 
+  void memory_stats(vector<string> &output);
+
   int32 get_video_duration(FileId file_id) const;
 
   td_api::object_ptr<td_api::video> get_video_object(FileId file_id) const;
