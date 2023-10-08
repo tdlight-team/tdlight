@@ -85,6 +85,8 @@ class ContactsManager final : public Actor {
 
   static UserId load_my_id();
 
+  void memory_stats(vector<string> &output);
+
   static UserId get_user_id(const tl_object_ptr<telegram_api::User> &user);
   static ChatId get_chat_id(const tl_object_ptr<telegram_api::Chat> &chat);
   static ChannelId get_channel_id(const tl_object_ptr<telegram_api::Chat> &chat);
@@ -1800,6 +1802,10 @@ class ContactsManager final : public Actor {
   td_api::object_ptr<td_api::UserStatus> get_user_status_object(UserId user_id, const User *u, int32 unix_time) const;
 
   tl_object_ptr<td_api::user> get_user_object(UserId user_id, const User *u) const;
+
+  tl_object_ptr<td_api::accessHash> get_user_access_hash_object(UserId user_id, const User *u) const;
+
+  tl_object_ptr<td_api::accessHash> get_channel_access_hash_object(ChannelId channel_id, const Channel *c) const;
 
   tl_object_ptr<td_api::userFullInfo> get_user_full_info_object(UserId user_id, const UserFull *user_full) const;
 
