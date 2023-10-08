@@ -87,6 +87,8 @@ class BotInfoManager final : public Actor {
 
   void get_bot_info_about(UserId bot_user_id, const string &language_code, Promise<string> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr double MAX_QUERY_DELAY = 0.01;
 

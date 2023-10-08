@@ -116,6 +116,8 @@ class LinkManager final : public Actor {
 
   static Result<MessageLinkInfo> get_message_link_info(Slice url);
 
+  void memory_stats(vector<string> &output);
+
  private:
   void start_up() final;
 

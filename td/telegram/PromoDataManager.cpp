@@ -145,4 +145,7 @@ void PromoDataManager::on_get_promo_data(Result<telegram_api::object_ptr<telegra
   schedule_get_promo_data(expires_at == 0 ? 0 : expires_at - G()->unix_time());
 }
 
+void PromoDataManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

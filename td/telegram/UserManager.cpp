@@ -8130,4 +8130,68 @@ void UserManager::get_current_state(vector<td_api::object_ptr<td_api::Update>> &
   }
 }
 
+void UserManager::memory_stats(vector<string> &output) {
+  output.push_back("\"users_\":"); output.push_back(std::to_string(this->users_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"users_full_\":"); output.push_back(std::to_string(this->users_full_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"user_photos_\":"); output.push_back(std::to_string(this->user_photos_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"unknown_users_\":"); output.push_back(std::to_string(this->unknown_users_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_user_photos_\":"); output.push_back(std::to_string(this->pending_user_photos_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"user_profile_photo_file_source_ids_\":"); output.push_back(std::to_string(this->user_profile_photo_file_source_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"my_photo_file_id_\":"); output.push_back(std::to_string(this->my_photo_file_id_.size()));
+  output.push_back(",");
+  output.push_back("\"user_full_file_source_ids_\":"); output.push_back(std::to_string(this->user_full_file_source_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"secret_chats_\":"); output.push_back(std::to_string(this->secret_chats_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"unknown_secret_chats_\":"); output.push_back(std::to_string(this->unknown_secret_chats_.size()));
+  output.push_back(",");
+  output.push_back("\"secret_chats_with_user_\":"); output.push_back(std::to_string(this->secret_chats_with_user_.size()));
+  output.push_back(",");
+  output.push_back("\"load_user_from_database_queries_\":"); output.push_back(std::to_string(this->load_user_from_database_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_users_\":"); output.push_back(std::to_string(this->loaded_from_database_users_.size()));
+  output.push_back(",");
+  output.push_back("\"unavailable_user_fulls_\":"); output.push_back(std::to_string(this->unavailable_user_fulls_.size()));
+  output.push_back(",");
+  output.push_back("\"load_secret_chat_from_database_queries_\":"); output.push_back(std::to_string(this->load_secret_chat_from_database_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_secret_chats_\":"); output.push_back(std::to_string(this->loaded_from_database_secret_chats_.size()));
+  output.push_back(",");
+  output.push_back("\"uploaded_profile_photos_\":"); output.push_back(std::to_string(this->uploaded_profile_photos_.size()));
+  output.push_back(",");
+  output.push_back("\"import_contact_tasks_\":"); output.push_back(std::to_string(this->import_contact_tasks_.size()));
+  output.push_back(",");
+  output.push_back("\"imported_contacts_\":"); output.push_back(std::to_string(this->imported_contacts_.size()));
+  output.push_back(",");
+  output.push_back("\"resolved_phone_numbers_\":"); output.push_back(std::to_string(this->resolved_phone_numbers_.size()));
+  output.push_back(",");
+  output.push_back("\"user_messages_\":"); output.push_back(std::to_string(this->user_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"load_contacts_queries_\":"); output.push_back(std::to_string(this->load_contacts_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"load_imported_contacts_queries_\":"); output.push_back(std::to_string(this->load_imported_contacts_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"all_imported_contacts_\":"); output.push_back(std::to_string(this->all_imported_contacts_.size()));
+  output.push_back(",");
+  output.push_back("\"user_full_contact_require_premium_\":"); output.push_back(std::to_string(this->user_full_contact_require_premium_.size()));
+  output.push_back(",");
+  output.push_back("\"restricted_user_ids_\":"); output.push_back(std::to_string(this->restricted_user_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"next_all_imported_contacts_\":"); output.push_back(std::to_string(this->next_all_imported_contacts_.size()));
+  output.push_back(",");
+  output.push_back("\"imported_contacts_unique_id_\":"); output.push_back(std::to_string(this->imported_contacts_unique_id_.size()));
+  output.push_back(",");
+  output.push_back("\"imported_contacts_pos_\":"); output.push_back(std::to_string(this->imported_contacts_pos_.size()));
+  output.push_back(",");
+  output.push_back("\"imported_contact_user_ids_\":"); output.push_back(std::to_string(this->imported_contact_user_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"unimported_contact_invites_\":"); output.push_back(std::to_string(this->unimported_contact_invites_.size()));
+}
+
 }  // namespace td

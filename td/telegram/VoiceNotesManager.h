@@ -56,6 +56,8 @@ class VoiceNotesManager final : public Actor {
   template <class ParserT>
   FileId parse_voice_note(ParserT &parser);
 
+  void memory_stats(vector<string> &output);
+
  private:
   class VoiceNote {
    public:

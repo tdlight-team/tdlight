@@ -384,4 +384,7 @@ void InlineMessageManager::get_inline_game_high_scores(const string &inline_mess
       ->send(std::move(input_bot_inline_message_id), std::move(input_user));
 }
 
+void InlineMessageManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

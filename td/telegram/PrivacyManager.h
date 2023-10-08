@@ -35,6 +35,8 @@ class PrivacyManager final : public Actor {
 
   void on_update_privacy(tl_object_ptr<telegram_api::updatePrivacy> update);
 
+  void memory_stats(vector<string> &output);
+
  private:
   struct PrivacyInfo {
     UserPrivacySettingRules rules_;

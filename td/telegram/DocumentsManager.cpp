@@ -786,4 +786,8 @@ string DocumentsManager::get_document_search_text(FileId file_id) const {
   return sb.as_cslice().str();
 }
 
+void DocumentsManager::memory_stats(vector<string> &output) {
+  output.push_back("\"documents_\":"); output.push_back(std::to_string(this->documents_.calc_size()));
+}
+
 }  // namespace td

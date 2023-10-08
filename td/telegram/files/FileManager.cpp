@@ -14,6 +14,7 @@
 #include "td/telegram/files/FileLoaderUtils.h"
 #include "td/telegram/files/FileLocation.h"
 #include "td/telegram/files/FileLocation.hpp"
+#include "td/telegram/MemoryManager.h"
 #include "td/telegram/Global.h"
 #include "td/telegram/logevent/LogEvent.h"
 #include "td/telegram/misc.h"
@@ -885,8 +886,8 @@ FileManager::FileManager(unique_ptr<Context> context) : context_(std::move(conte
   }
 
   parent_ = context_->create_reference();
-  next_file_id();
-  next_file_node_id();
+    next_file_id();
+    next_file_node_id();
 
   G()->td_db()->with_db_path([bad_paths = &bad_paths_](CSlice path) { bad_paths->insert(path.str()); });
 }
@@ -4471,5 +4472,9 @@ void FileManager::tear_down() {
 constexpr int64 FileManager::KEEP_DOWNLOAD_LIMIT;
 constexpr int64 FileManager::KEEP_DOWNLOAD_OFFSET;
 constexpr int64 FileManager::IGNORE_DOWNLOAD_LIMIT;
+
+void FileManager::memory_stats(vector<string> &output) {
+  output.push_back("\"file_hash_to_file_id_\":"); output.push_back(std::to_string(this->file_hash_to_file_id_.calc_size()));
+}
 
 }  // namespace td

@@ -23,6 +23,7 @@ class Td;
 
 class VideosManager {
  public:
+  void memory_stats(vector<string> &output);
   explicit VideosManager(Td *td);
   VideosManager(const VideosManager &) = delete;
   VideosManager &operator=(const VideosManager &) = delete;

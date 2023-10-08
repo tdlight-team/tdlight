@@ -245,4 +245,7 @@ void PrivacyManager::do_update_privacy(UserPrivacySetting user_privacy_setting, 
   }
 }
 
+void PrivacyManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

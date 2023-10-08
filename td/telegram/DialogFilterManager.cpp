@@ -2203,4 +2203,14 @@ void DialogFilterManager::get_current_state(vector<td_api::object_ptr<td_api::Up
   }
 }
 
+void DialogFilterManager::memory_stats(vector<string> &output) {
+  output.push_back("\"server_dialog_filters_\":"); output.push_back(std::to_string(this->server_dialog_filters_.size()));
+  output.push_back(",");
+  output.push_back("\"dialog_filters_\":"); output.push_back(std::to_string(this->dialog_filters_.size()));
+  output.push_back(",");
+  output.push_back("\"dialog_filter_reload_queries_\":"); output.push_back(std::to_string(this->dialog_filter_reload_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"recommended_dialog_filters_\":"); output.push_back(std::to_string(this->recommended_dialog_filters_.size()));
+}
+
 }  // namespace td

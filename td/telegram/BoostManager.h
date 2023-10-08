@@ -55,6 +55,8 @@ class BoostManager final : public Actor {
 
   void on_update_dialog_boost(DialogId dialog_id, telegram_api::object_ptr<telegram_api::boost> &&boost);
 
+  void memory_stats(vector<string> &output);
+
  private:
   void tear_down() final;
 

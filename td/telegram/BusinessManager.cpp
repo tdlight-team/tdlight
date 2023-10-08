@@ -625,4 +625,7 @@ void BusinessManager::set_business_intro(BusinessIntro &&intro, Promise<Unit> &&
   td_->create_handler<UpdateBusinessIntroQuery>(std::move(promise))->send(std::move(intro));
 }
 
+void BusinessManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

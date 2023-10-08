@@ -538,4 +538,12 @@ void ChannelRecommendationManager::open_channel_recommended_channel(DialogId dia
                telegram_api::make_object<telegram_api::jsonObject>(std::move(data)), std::move(promise));
 }
 
+void ChannelRecommendationManager::memory_stats(vector<string> &output) {
+  output.push_back("\"channel_recommended_dialogs_\":"); output.push_back(std::to_string(this->channel_recommended_dialogs_.size()));
+  output.push_back(",");
+  output.push_back("\"get_channel_recommendations_queries_\":"); output.push_back(std::to_string(this->get_channel_recommendations_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"get_recommended_channels_queries_\":"); output.push_back(std::to_string(this->get_recommended_channels_queries_.size()));
+}
+
 }  // namespace td

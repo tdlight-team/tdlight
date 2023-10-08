@@ -8959,4 +8959,48 @@ void ChatManager::get_current_state(vector<td_api::object_ptr<td_api::Update>> &
   });
 }
 
+void ChatManager::memory_stats(vector<string> &output) {
+  output.push_back("\"chats_\":"); output.push_back(std::to_string(this->chats_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"chats_full_\":"); output.push_back(std::to_string(this->chats_full_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"unknown_chats_\":"); output.push_back(std::to_string(this->unknown_chats_.size()));
+  output.push_back(",");
+  output.push_back("\"chat_full_file_source_ids_\":"); output.push_back(std::to_string(this->chat_full_file_source_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"min_channels_\":"); output.push_back(std::to_string(this->min_channels_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"channels_\":"); output.push_back(std::to_string(this->channels_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"channels_full_\":"); output.push_back(std::to_string(this->channels_full_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"unknown_channels_\":"); output.push_back(std::to_string(this->unknown_channels_.size()));
+  output.push_back(",");
+  output.push_back("\"invalidated_channels_full_\":"); output.push_back(std::to_string(this->invalidated_channels_full_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"channel_full_file_source_ids_\":"); output.push_back(std::to_string(this->channel_full_file_source_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"dialogs_for_discussion_\":"); output.push_back(std::to_string(this->dialogs_for_discussion_.size()));
+  output.push_back(",");
+  output.push_back("\"inactive_channel_ids_\":"); output.push_back(std::to_string(this->inactive_channel_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"load_chat_from_database_queries_\":"); output.push_back(std::to_string(this->load_chat_from_database_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_chats_\":"); output.push_back(std::to_string(this->loaded_from_database_chats_.size()));
+  output.push_back(",");
+  output.push_back("\"unavailable_chat_fulls_\":"); output.push_back(std::to_string(this->unavailable_chat_fulls_.size()));
+  output.push_back(",");
+  output.push_back("\"load_channel_from_database_queries_\":"); output.push_back(std::to_string(this->load_channel_from_database_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_channels_\":"); output.push_back(std::to_string(this->loaded_from_database_channels_.size()));
+  output.push_back(",");
+  output.push_back("\"unavailable_channel_fulls_\":"); output.push_back(std::to_string(this->unavailable_channel_fulls_.size()));
+  output.push_back(",");
+  output.push_back("\"channel_messages_\":"); output.push_back(std::to_string(this->channel_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"linked_channel_ids_\":"); output.push_back(std::to_string(this->linked_channel_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"restricted_channel_ids_\":"); output.push_back(std::to_string(this->restricted_channel_ids_.calc_size()));
+}
+
 }  // namespace td

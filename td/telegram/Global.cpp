@@ -162,6 +162,10 @@ bool Global::use_message_database() const {
   return td_db_->use_message_database();
 }
 
+bool Global::use_custom_database_format() const {
+  return td_db_->use_custom_database_format();
+}
+
 int32 Global::get_retry_after(int32 error_code, Slice error_message) {
   if (error_code != 429) {
     return 0;

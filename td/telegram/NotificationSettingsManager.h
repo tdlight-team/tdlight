@@ -46,7 +46,7 @@ class NotificationSettingsManager final : public Actor {
   NotificationSettingsManager &operator=(NotificationSettingsManager &&) = delete;
   ~NotificationSettingsManager() final;
 
-  int32 get_scope_mute_until(NotificationSettingsScope scope) const;
+    int32 get_scope_mute_until(NotificationSettingsScope scope) const;
 
   std::pair<bool, bool> get_scope_mute_stories(NotificationSettingsScope scope) const;
 
@@ -123,6 +123,8 @@ class NotificationSettingsManager final : public Actor {
   void on_binlog_events(vector<BinlogEvent> &&events);
 
   void get_current_state(vector<td_api::object_ptr<td_api::Update>> &updates) const;
+
+  void memory_stats(vector<string> &output);
 
  private:
   class UpdateScopeNotificationSettingsOnServerLogEvent;

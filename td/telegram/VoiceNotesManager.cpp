@@ -219,4 +219,8 @@ tl_object_ptr<telegram_api::InputMedia> VoiceNotesManager::get_input_media(
   return nullptr;
 }
 
+void VoiceNotesManager::memory_stats(vector<string> &output) {
+  output.push_back("\"voice_notes_\":"); output.push_back(std::to_string(this->voice_notes_.calc_size()));
+}
+
 }  // namespace td

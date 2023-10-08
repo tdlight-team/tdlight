@@ -167,7 +167,11 @@ void NotificationManager::on_flush_pending_updates_timeout_callback(void *notifi
 }
 
 bool NotificationManager::is_disabled() const {
+  if ( G()->get_option_boolean("disable_notifications")) {
+    return true;
+  } else {
   return G()->close_flag() || !td_->auth_manager_->is_authorized() || td_->auth_manager_->is_bot();
+  }
 }
 
 StringBuilder &operator<<(StringBuilder &string_builder, const NotificationManager::ActiveNotificationsUpdate &update) {
@@ -4380,6 +4384,34 @@ void NotificationManager::on_binlog_events(vector<BinlogEvent> &&events) {
   is_binlog_processed_ = true;
   try_send_update_active_notifications();
   VLOG(notifications) << "Finish processing binlog events";
+}
+
+void NotificationManager::memory_stats(vector<string> &output) {
+  output.push_back("\"running_get_chat_difference_\":"); output.push_back(std::to_string(this->running_get_chat_difference_.size()));
+  output.push_back(",");
+  output.push_back("\"group_keys_\":"); output.push_back(std::to_string(this->group_keys_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_updates_\":"); output.push_back(std::to_string(this->pending_updates_.size()));
+  output.push_back(",");
+  output.push_back("\"call_notification_group_ids_\":"); output.push_back(std::to_string(this->call_notification_group_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"available_call_notification_group_ids_\":"); output.push_back(std::to_string(this->available_call_notification_group_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"dialog_id_to_call_notification_group_id_\":"); output.push_back(std::to_string(this->dialog_id_to_call_notification_group_id_.size()));
+  output.push_back(",");
+  output.push_back("\"temporary_notification_log_event_ids_\":"); output.push_back(std::to_string(this->temporary_notification_log_event_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"temporary_edit_notification_log_event_ids_\":"); output.push_back(std::to_string(this->temporary_edit_notification_log_event_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"temporary_notifications_\":"); output.push_back(std::to_string(this->temporary_notifications_.size()));
+  output.push_back(",");
+  output.push_back("\"temporary_notification_object_ids_\":"); output.push_back(std::to_string(this->temporary_notification_object_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"push_notification_promises_\":"); output.push_back(std::to_string(this->push_notification_promises_.size()));
+  output.push_back(",");
+  output.push_back("\"active_call_notifications_\":"); output.push_back(std::to_string(this->active_call_notifications_.size()));
+  output.push_back(",");
+  output.push_back("\"announcement_id_date_\":"); output.push_back(std::to_string(this->announcement_id_date_.size()));
 }
 
 }  // namespace td

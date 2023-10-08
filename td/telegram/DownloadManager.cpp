@@ -839,4 +839,7 @@ void DownloadManager::Counters::parse(ParserT &parser) {
   td::parse(downloaded_size, parser);
 }
 
+void DownloadManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

@@ -39,6 +39,7 @@ class Td;
 
 class PollManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   PollManager(Td *td, ActorShared<> parent);
 
   PollManager(const PollManager &) = delete;

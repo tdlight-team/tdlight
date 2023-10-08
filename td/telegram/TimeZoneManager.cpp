@@ -203,4 +203,8 @@ void TimeZoneManager::save_time_zones() {
   G()->td_db()->get_binlog_pmc()->set(get_time_zones_database_key(), log_event_store(time_zones_).as_slice().str());
 }
 
+void TimeZoneManager::memory_stats(vector<string> &output) {
+  output.push_back("\"get_time_zones_queries_\":"); output.push_back(std::to_string(this->get_time_zones_queries_.size()));
+}
+
 }  // namespace td

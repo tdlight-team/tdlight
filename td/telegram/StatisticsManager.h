@@ -66,6 +66,8 @@ class StatisticsManager final : public Actor {
   static td_api::object_ptr<td_api::StatisticalGraph> convert_stats_graph(
       telegram_api::object_ptr<telegram_api::StatsGraph> obj);
 
+  void memory_stats(vector<string> &output);
+
  private:
   void tear_down() final;
 

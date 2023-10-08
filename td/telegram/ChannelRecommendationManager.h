@@ -36,6 +36,8 @@ class ChannelRecommendationManager final : public Actor {
 
   void open_channel_recommended_channel(DialogId dialog_id, DialogId opened_dialog_id, Promise<Unit> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr int32 CHANNEL_RECOMMENDATIONS_CACHE_TIME = 86400;  // some reasonable limit
 

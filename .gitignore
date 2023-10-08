@@ -4,7 +4,9 @@
 **/auto/
 docs/
 /tdlib/
+.idea/
 vcpkg/
+*.tlo
 
 td.binlog
 

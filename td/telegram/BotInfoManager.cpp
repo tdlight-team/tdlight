@@ -991,4 +991,16 @@ void BotInfoManager::get_bot_info_about(UserId bot_user_id, const string &langua
   add_pending_get_query(bot_user_id, language_code, 2, std::move(promise));
 }
 
+void BotInfoManager::memory_stats(vector<string> &output) {
+  output.push_back("\"pending_set_bot_info_queries_\":"); output.push_back(std::to_string(this->pending_set_bot_info_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_get_bot_info_queries_\":"); output.push_back(std::to_string(this->pending_get_bot_info_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"bot_media_preview_file_source_ids_\":"); output.push_back(std::to_string(this->bot_media_preview_file_source_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"bot_media_preview_info_file_source_ids_\":"); output.push_back(std::to_string(this->bot_media_preview_info_file_source_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"being_uploaded_files_\":"); output.push_back(std::to_string(this->being_uploaded_files_.size()));
+}
+
 }  // namespace td

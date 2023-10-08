@@ -58,4 +58,7 @@ void ConnectionStateManager::get_current_state(vector<td_api::object_ptr<td_api:
   updates.push_back(get_update_connection_state_object(connection_state_));
 }
 
+void ConnectionStateManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

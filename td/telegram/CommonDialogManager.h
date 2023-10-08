@@ -39,6 +39,8 @@ class CommonDialogManager final : public Actor {
   std::pair<int32, vector<DialogId>> get_common_dialogs(UserId user_id, DialogId offset_dialog_id, int32 limit,
                                                         bool force, Promise<Unit> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   void tear_down() final;
 

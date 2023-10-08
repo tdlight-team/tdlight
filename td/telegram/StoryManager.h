@@ -372,6 +372,8 @@ class StoryManager final : public Actor {
 
   void on_binlog_events(vector<BinlogEvent> &&events);
 
+  void memory_stats(vector<string> &output);
+
  private:
   class UploadMediaCallback;
 

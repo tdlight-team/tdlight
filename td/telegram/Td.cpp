@@ -82,6 +82,7 @@
 #include "td/telegram/StatisticsManager.h"
 #include "td/telegram/StickersManager.h"
 #include "td/telegram/StorageManager.h"
+#include "td/telegram/MemoryManager.h"
 #include "td/telegram/StoryManager.h"
 #include "td/telegram/SynchronousRequests.h"
 #include "td/telegram/TdDb.h"
@@ -207,6 +208,7 @@ bool Td::is_preauthentication_request(int32 id) {
     case td_api::getStorageStatistics::ID:
     case td_api::getStorageStatisticsFast::ID:
     case td_api::getDatabaseStatistics::ID:
+    case td_api::getMemoryStatistics::ID:
     case td_api::setNetworkType::ID:
     case td_api::getNetworkStatistics::ID:
     case td_api::addNetworkStatistics::ID:
@@ -259,7 +261,6 @@ vector<td_api::object_ptr<td_api::Update>> Td::get_fake_current_state() const {
   updates.push_back(td_api::make_object<td_api::updateAuthorizationState>(get_fake_authorization_state_object()));
   return updates;
 }
-
 void Td::request(uint64 id, tl_object_ptr<td_api::Function> function) {
   if (id == 0) {
     LOG(ERROR) << "Ignore request with ID == 0: " << to_string(function);
@@ -541,6 +542,7 @@ void Td::dec_actor_refcnt() {
       reset_manager(star_manager_, "StarManager");
       reset_manager(statistics_manager_, "StatisticsManager");
       reset_manager(stickers_manager_, "StickersManager");
+      reset_manager(memory_manager_, "MemoryManager");
       reset_manager(story_manager_, "StoryManager");
       reset_manager(terms_of_service_manager_, "TermsOfServiceManager");
       reset_manager(theme_manager_, "ThemeManager");
@@ -566,9 +568,20 @@ void Td::dec_actor_refcnt() {
       close_flag_ = 4;
     } else if (close_flag_ == 4) {
       on_closed();
+#ifdef __linux__
+  #if defined(__GLIBC__) && !defined(__UCLIBC__) && !defined(__MUSL__)
+      malloc_trim(0);
+  #endif
+#endif
     } else {
       UNREACHABLE();
     }
+  } else {
+#ifdef __linux__
+  #if defined(__GLIBC__) && !defined(__UCLIBC__) && !defined(__MUSL__)
+    malloc_trim(0);
+  #endif
+#endif
   }
 }
 
@@ -711,6 +724,7 @@ void Td::clear() {
   reset_actor(ActorOwn<Actor>(std::move(star_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(statistics_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(stickers_manager_actor_)));
+  reset_actor(ActorOwn<Actor>(std::move(memory_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(story_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(terms_of_service_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(theme_manager_actor_)));
@@ -1223,6 +1237,9 @@ void Td::init_managers() {
   stickers_manager_ = make_unique<StickersManager>(this, create_reference());
   stickers_manager_actor_ = register_actor("StickersManager", stickers_manager_.get());
   G()->set_stickers_manager(stickers_manager_actor_.get());
+  memory_manager_ = make_unique<MemoryManager>(this, create_reference());
+  memory_manager_actor_ = register_actor("MemoryManager", memory_manager_.get());
+  G()->set_memory_manager(memory_manager_actor_.get());
   story_manager_ = make_unique<StoryManager>(this, create_reference());
   story_manager_actor_ = register_actor("StoryManager", story_manager_.get());
   G()->set_story_manager(story_manager_actor_.get());
@@ -1372,8 +1389,9 @@ Result<std::pair<Td::Parameters, TdDb::Parameters>> Td::get_parameters(
   result.first.api_hash_ = std::move(parameters->api_hash_);
   result.first.use_secret_chats_ = parameters->use_secret_chats_;
 
-  result.second.encryption_key_ = TdDb::as_db_key(std::move(parameters->database_encryption_key_));
-  result.second.database_directory_ = std::move(parameters->database_directory_);
+  result.second.encryption_key_ = TdDb::as_db_key(std::move(parameters->database_encryption_key_), Global::get_use_custom_database(parameters->database_directory_));
+  result.second.database_directory_ = Global::get_database_directory_path(parameters->database_directory_);
+  result.second.use_custom_database_format_ = Global::get_use_custom_database(parameters->database_directory_);
   result.second.files_directory_ = std::move(parameters->files_directory_);
   result.second.is_test_dc_ = parameters->use_test_dc_;
   result.second.use_file_database_ = parameters->use_file_database_;
@@ -1413,7 +1431,6 @@ Result<std::pair<Td::Parameters, TdDb::Parameters>> Td::get_parameters(
 
   return std::move(result);
 }
-
 void Td::on_file_download_finished(FileId file_id) {
   requests_->on_file_download_finished(file_id);
 }

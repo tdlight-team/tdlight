@@ -475,4 +475,8 @@ void SponsoredMessageManager::report_sponsored_message(
       ->send(dialog_id.get_channel_id(), random_id_it->second.random_id_, option_id);
 }
 
+void SponsoredMessageManager::memory_stats(vector<string> &output) {
+  output.push_back("\"dialog_sponsored_messages_\":"); output.push_back(std::to_string(this->dialog_sponsored_messages_.size()));
+}
+
 }  // namespace td

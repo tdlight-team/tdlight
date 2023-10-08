@@ -4,6 +4,7 @@
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
+#include "MemoryManager.h"
 #include "td/telegram/Requests.h"
 
 #include "td/telegram/AccentColorId.h"
@@ -2012,7 +2013,7 @@ void Requests::on_request(uint64 id, const td_api::setTdlibParameters &request) 
 
 void Requests::on_request(uint64 id, td_api::setDatabaseEncryptionKey &request) {
   CREATE_OK_REQUEST_PROMISE();
-  G()->td_db()->get_binlog()->change_key(TdDb::as_db_key(std::move(request.new_encryption_key_)), std::move(promise));
+  G()->td_db()->get_binlog()->change_key(TdDb::as_db_key(std::move(request.new_encryption_key_), G()->use_custom_database_format()), std::move(promise));
 }
 
 void Requests::on_request(uint64 id, const td_api::getAuthorizationState &request) {
@@ -2525,6 +2526,19 @@ void Requests::on_request(uint64 id, const td_api::disconnectAllWebsites &reques
 
 void Requests::on_request(uint64 id, const td_api::getMe &request) {
   CREATE_NO_ARGS_REQUEST(GetMeRequest);
+}
+
+void Requests::on_request(uint64 id, const td_api::getMemoryStatistics &request) {
+  CREATE_REQUEST_PROMISE();
+  auto query_promise = PromiseCreator::lambda([promise = std::move(promise)](Result<MemoryStats> result) mutable {
+    if (result.is_error()) {
+      promise.set_error(result.move_as_error());
+    } else {
+      promise.set_value(result.ok().get_memory_statistics_object());
+    }
+  });
+
+  td_->memory_manager_->get_memory_stats(request.full_, std::move(query_promise));
 }
 
 void Requests::on_request(uint64 id, const td_api::getUser &request) {

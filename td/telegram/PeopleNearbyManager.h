@@ -40,6 +40,8 @@ class PeopleNearbyManager final : public Actor {
 
   bool is_user_nearby(UserId user_id) const;
 
+  void memory_stats(vector<string> &output);
+
  private:
   struct DialogNearby {
     DialogId dialog_id;

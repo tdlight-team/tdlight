@@ -312,4 +312,7 @@ void CallbackQueriesManager::send_get_callback_answer_query(
       ->send(dialog_id, message_full_id.get_message_id(), payload, std::move(password));
 }
 
+void CallbackQueriesManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

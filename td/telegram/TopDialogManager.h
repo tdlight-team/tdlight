@@ -43,6 +43,8 @@ class TopDialogManager final : public Actor {
 
   void update_is_enabled(bool is_enabled);
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr size_t MAX_TOP_DIALOGS_LIMIT = 30;
   static constexpr int32 SERVER_SYNC_DELAY = 86400;      // seconds

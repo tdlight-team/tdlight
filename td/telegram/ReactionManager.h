@@ -88,6 +88,8 @@ class ReactionManager final : public Actor {
 
   void get_current_state(vector<td_api::object_ptr<td_api::Update>> &updates) const;
 
+  void memory_stats(vector<string> &output);
+
  private:
   struct Reaction {
     ReactionType reaction_type_;

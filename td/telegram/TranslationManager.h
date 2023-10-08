@@ -29,6 +29,8 @@ class TranslationManager final : public Actor {
   void translate_text(FormattedText text, bool skip_bot_commands, int32 max_media_timestamp,
                       const string &to_language_code, Promise<td_api::object_ptr<td_api::formattedText>> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   void tear_down() final;
 

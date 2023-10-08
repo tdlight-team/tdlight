@@ -502,4 +502,7 @@ void BoostManager::on_update_dialog_boost(DialogId dialog_id, telegram_api::obje
           td_->dialog_manager_->get_chat_id_object(dialog_id, "updateChatBoost"), std::move(chat_boost_object)));
 }
 
+void BoostManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

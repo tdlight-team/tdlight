@@ -78,6 +78,7 @@ class StarManager;
 class StateManager;
 class StickersManager;
 class StorageManager;
+class MemoryManager;
 class StoryManager;
 class Td;
 class TdDb;
@@ -115,6 +116,52 @@ class Global final : public ActorContext {
   void close_all(bool destroy_flag, Promise<> on_finished);
 
   Status init(ActorId<Td> td, unique_ptr<TdDb> td_db_ptr) TD_WARN_UNUSED_RESULT;
+
+  static bool get_use_custom_database(const std::string &database_directory) {
+    auto s = get_database_directory_opts(database_directory);
+    size_t qmarkpos;
+    std::string token;
+    size_t find_start_index = 0;
+    while ((qmarkpos = s.find_first_of('&'), find_start_index) != std::string::npos) {
+      token = s.substr(find_start_index, qmarkpos - find_start_index);
+      find_start_index = qmarkpos;
+      if ((qmarkpos = token.find_first_of('=')) != std::string::npos) {
+        std::string propkey = token.substr(0, qmarkpos), propval = token.substr(qmarkpos + 1);
+        if (propkey == "use_custom_database_format" && propval == "true") {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  static std::string get_database_directory_path(const std::string &database_directory) {
+    if (database_directory.empty()) {
+      return database_directory;
+    }
+    size_t qmarkpos;
+    if ((qmarkpos = database_directory.find_first_of('?')) != std::string::npos) {
+      std::string path = database_directory.substr(0, qmarkpos),
+                  opts = database_directory.substr(qmarkpos + 1);
+      return path;
+    } else {
+      return database_directory;
+    }
+  }
+
+  static std::string get_database_directory_opts(const std::string &database_directory) {
+    if (database_directory.empty()) {
+      return database_directory;
+    }
+    size_t qmarkpos;
+    if ((qmarkpos = database_directory.find_first_of('?')) != std::string::npos) {
+      std::string path = database_directory.substr(0, qmarkpos),
+                  opts = database_directory.substr(qmarkpos + 1);
+      return opts;
+    } else {
+      return "";
+    }
+  }
 
   Slice get_dir() const;
 
@@ -498,6 +545,13 @@ class Global final : public ActorContext {
     storage_manager_ = storage_manager;
   }
 
+  ActorId<MemoryManager> memory_manager() const {
+    return memory_manager_;
+  }
+  void set_memory_manager(ActorId<MemoryManager> memory_manager) {
+    memory_manager_ = memory_manager;
+  }
+
   ActorId<StoryManager> story_manager() const {
     return story_manager_;
   }
@@ -573,6 +627,8 @@ class Global final : public ActorContext {
   bool use_chat_info_database() const;
 
   bool use_message_database() const;
+
+  bool use_custom_database_format() const;
 
   bool keep_media_order() const {
     return use_file_database();
@@ -718,6 +774,7 @@ class Global final : public ActorContext {
   ActorId<StarManager> star_manager_;
   ActorId<StickersManager> stickers_manager_;
   ActorId<StorageManager> storage_manager_;
+  ActorId<MemoryManager> memory_manager_;
   ActorId<StoryManager> story_manager_;
   ActorId<ThemeManager> theme_manager_;
   ActorId<TimeZoneManager> time_zone_manager_;

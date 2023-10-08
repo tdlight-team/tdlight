@@ -47,6 +47,8 @@ class CountryInfoManager final : public Actor {
   CountryInfoManager &operator=(CountryInfoManager &&) = delete;
   ~CountryInfoManager() final;
 
+  void memory_stats(vector<string> &output);
+
  private:
   void start_up() final;
   void tear_down() final;

@@ -79,6 +79,8 @@ class AttachMenuManager final : public Actor {
 
   static string get_attach_menu_bots_database_key();
 
+  void memory_stats(vector<string> &output);
+
  private:
   static const int32 PING_WEB_VIEW_TIMEOUT = 60;
 

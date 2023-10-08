@@ -14,6 +14,8 @@
 
 #include "td/utils/tl_helpers.h"
 
+#include "td/telegram/ConfigManager.h"
+
 namespace td {
 
 template <class StorerT>
@@ -66,13 +68,25 @@ FileId DocumentsManager::parse_document(ParserT &parser) {
     has_thumbnail = true;
   }
   if (has_file_name) {
-    parse(document->file_name, parser);
+    string tmp_filename;
+    parse(tmp_filename, parser);
+    if (G()->get_option_boolean("disable_document_filenames") &&
+        (document->mime_type.rfind("image/") == 0 || document->mime_type.rfind("video/") == 0 ||
+         document->mime_type.rfind("audio/") == 0)) {
+      document->file_name = "0";
+    } else {
+      document->file_name = tmp_filename;
+    }
   }
   if (has_mime_type) {
     parse(document->mime_type, parser);
   }
   if (has_minithumbnail) {
-    parse(document->minithumbnail, parser);
+      string tmp_minithumbnail;
+      parse(tmp_minithumbnail, parser);
+      if (!G()->get_option_boolean("disable_minithumbnails")) {
+          document->minithumbnail = tmp_minithumbnail;
+      }
   }
   if (has_thumbnail) {
     parse(document->thumbnail, parser);

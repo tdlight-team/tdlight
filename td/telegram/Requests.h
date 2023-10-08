@@ -249,6 +249,8 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getMe &request);
 
+  void on_request(uint64 id, const td_api::getMemoryStatistics &request);
+
   void on_request(uint64 id, const td_api::getUser &request);
 
   void on_request(uint64 id, const td_api::getUserFullInfo &request);

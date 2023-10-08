@@ -26,6 +26,7 @@ class Td;
 
 class VideoNotesManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   VideoNotesManager(Td *td, ActorShared<> parent);
   VideoNotesManager(const VideoNotesManager &) = delete;
   VideoNotesManager &operator=(const VideoNotesManager &) = delete;

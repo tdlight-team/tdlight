@@ -3729,4 +3729,22 @@ void QuickReplyManager::get_current_state(vector<td_api::object_ptr<td_api::Upda
   }
 }
 
+void QuickReplyManager::memory_stats(vector<string> &output) {
+  output.push_back("\"deleted_shortcut_ids_\":"); output.push_back(std::to_string(this->deleted_shortcut_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"persistent_shortcut_ids_\":"); output.push_back(std::to_string(this->persistent_shortcut_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"get_shortcut_messages_queries_\":"); output.push_back(std::to_string(this->get_shortcut_messages_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"deleted_message_full_ids_\":"); output.push_back(std::to_string(this->deleted_message_full_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"message_full_id_to_file_source_id_\":"); output.push_back(std::to_string(this->message_full_id_to_file_source_id_.size()));
+  output.push_back(",");
+  output.push_back("\"being_uploaded_files_\":"); output.push_back(std::to_string(this->being_uploaded_files_.size()));
+  output.push_back(",");
+  output.push_back("\"being_uploaded_thumbnails_\":"); output.push_back(std::to_string(this->being_uploaded_thumbnails_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_message_group_sends_\":"); output.push_back(std::to_string(this->pending_message_group_sends_.size()));
+}
+
 }  // namespace td

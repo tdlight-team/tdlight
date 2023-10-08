@@ -309,4 +309,8 @@ tl_object_ptr<telegram_api::InputMedia> AudiosManager::get_input_media(
   return nullptr;
 }
 
+void AudiosManager::memory_stats(vector<string> &output) {
+  output.push_back("\"audios_\":"); output.push_back(std::to_string(this->audios_.calc_size()));
+}
+
 }  // namespace td

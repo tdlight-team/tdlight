@@ -424,4 +424,10 @@ void DialogActionManager::clear_active_dialog_actions(DialogId dialog_id) {
   }
 }
 
+void DialogActionManager::memory_stats(vector<string> &output) {
+  output.push_back("\"active_dialog_actions_\":"); output.push_back(std::to_string(this->active_dialog_actions_.size()));
+  output.push_back(",");
+  output.push_back("\"set_typing_query_\":"); output.push_back(std::to_string(this->set_typing_query_.size()));
+}
+
 }  // namespace td

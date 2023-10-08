@@ -57,6 +57,8 @@ class TranscriptionManager final : public Actor {
 
   void get_current_state(vector<td_api::object_ptr<td_api::Update>> &updates) const;
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr int32 AUDIO_TRANSCRIPTION_TIMEOUT = 60;
 

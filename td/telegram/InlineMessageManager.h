@@ -51,6 +51,8 @@ class InlineMessageManager final : public Actor {
   void get_inline_game_high_scores(const string &inline_message_id, UserId user_id,
                                    Promise<td_api::object_ptr<td_api::gameHighScores>> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   void tear_down() final;
 

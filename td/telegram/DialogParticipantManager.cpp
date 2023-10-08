@@ -3004,4 +3004,18 @@ void DialogParticipantManager::get_current_state(vector<td_api::object_ptr<td_ap
   }
 }
 
+void DialogParticipantManager::memory_stats(vector<string> &output) {
+  output.push_back("\"dialog_online_member_counts_\":"); output.push_back(std::to_string(this->dialog_online_member_counts_.size()));
+  output.push_back(",");
+  output.push_back("\"user_online_member_dialogs_\":"); output.push_back(std::to_string(this->user_online_member_dialogs_.size()));
+  output.push_back(",");
+  output.push_back("\"dialog_administrators_\":"); output.push_back(std::to_string(this->dialog_administrators_.size()));
+  output.push_back(",");
+  output.push_back("\"channel_participants_\":"); output.push_back(std::to_string(this->channel_participants_.size()));
+  output.push_back(",");
+  output.push_back("\"cached_channel_participants_\":"); output.push_back(std::to_string(this->cached_channel_participants_.size()));
+  output.push_back(",");
+  output.push_back("\"join_channel_queries_\":"); output.push_back(std::to_string(this->join_channel_queries_.size()));
+}
+
 }  // namespace td

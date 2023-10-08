@@ -25,6 +25,8 @@ class PromoDataManager final : public Actor {
 
   void reload_promo_data();
 
+  void memory_stats(vector<string> &output);
+
  private:
   void tear_down() final;
 

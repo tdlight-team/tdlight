@@ -60,6 +60,7 @@ class TdDb {
     bool use_file_database_ = false;
     bool use_chat_info_database_ = false;
     bool use_message_database_ = false;
+    bool use_custom_database_format_ = false;
   };
 
   struct OpenedDatabase {
@@ -117,6 +118,10 @@ class TdDb {
     return was_dialog_db_created_;
   }
 
+  bool use_custom_database_format() const {
+    return parameters_.use_custom_database_format_;
+  }
+
   std::shared_ptr<FileDbInterface> get_file_db_shared();
   std::shared_ptr<SqliteConnectionSafe> &get_sqlite_connection_safe();
 #define get_binlog() get_binlog_impl(__FILE__, __LINE__)
@@ -148,7 +153,7 @@ class TdDb {
   StoryDbSyncInterface *get_story_db_sync();
   StoryDbAsyncInterface *get_story_db_async();
 
-  static DbKey as_db_key(string key);
+  static DbKey as_db_key(string key, bool custom_db);
 
   void change_key(DbKey key, Promise<> promise);
 

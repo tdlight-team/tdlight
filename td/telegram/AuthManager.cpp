@@ -1493,4 +1493,10 @@ void AuthManager::save_state() {
   G()->td_db()->get_binlog_pmc()->set("auth_state", log_event_store(db_state).as_slice().str());
 }
 
+void AuthManager::memory_stats(vector<string> &output) {
+  output.push_back("\"other_user_ids_\":"); output.push_back(std::to_string(this->other_user_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_get_authorization_state_requests_\":"); output.push_back(std::to_string(this->pending_get_authorization_state_requests_.size()));
+}
+
 }  // namespace td

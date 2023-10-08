@@ -4579,4 +4579,8 @@ void UpdatesManager::on_update(tl_object_ptr<telegram_api::updateNewStoryReactio
   promise.set_value(Unit());
 }
 
+void UpdatesManager::memory_stats(vector<string> &output) {
+  output.push_back("\"session_infos_\":"); output.push_back(std::to_string(this->session_infos_.size()));
+}
+
 }  // namespace td

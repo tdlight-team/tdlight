@@ -39,6 +39,7 @@ extern int VERBOSITY_NAME(file_references);
 
 class FileReferenceManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   explicit FileReferenceManager(ActorShared<> parent);
   FileReferenceManager(const FileReferenceManager &) = delete;
   FileReferenceManager &operator=(const FileReferenceManager &) = delete;

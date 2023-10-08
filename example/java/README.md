@@ -3,7 +3,7 @@
 To run this example, you will need installed JDK >= 1.6.
 For Javadoc documentation generation PHP is needed.
 
-You can find complete build instructions for your operating system at https://tdlib.github.io/td/build.html?language=Java.
+You can find complete build instructions for your operating system at https://tdlight-team.github.io/tdlight/build.html?language=Java.
 
 In general, the build process looks as follows.
 

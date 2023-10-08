@@ -26,6 +26,12 @@
 #include "td/utils/Slice.h"
 #include "td/utils/Status.h"
 
+#ifdef __linux__
+  #include <malloc.h>
+#endif
+#ifdef _WIN32
+  #include <malloc.h>
+#endif
 #include <memory>
 #include <unordered_map>
 #include <utility>
@@ -95,6 +101,7 @@ class StateManager;
 class StatisticsManager;
 class StickersManager;
 class StorageManager;
+class MemoryManager;
 class StoryManager;
 class TermsOfServiceManager;
 class ThemeManager;
@@ -269,6 +276,8 @@ class Td final : public Actor {
   ActorOwn<VideoNotesManager> video_notes_manager_actor_;
   unique_ptr<VoiceNotesManager> voice_notes_manager_;
   ActorOwn<VoiceNotesManager> voice_notes_manager_actor_;
+  unique_ptr<MemoryManager> memory_manager_;
+  ActorOwn<MemoryManager> memory_manager_actor_;
   unique_ptr<WebPagesManager> web_pages_manager_;
   ActorOwn<WebPagesManager> web_pages_manager_actor_;
 

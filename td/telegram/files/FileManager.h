@@ -380,6 +380,7 @@ class FileView {
 
 class FileManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   static constexpr int64 KEEP_DOWNLOAD_LIMIT = -1;
   static constexpr int64 KEEP_DOWNLOAD_OFFSET = -1;
   static constexpr int64 IGNORE_DOWNLOAD_LIMIT = -2;

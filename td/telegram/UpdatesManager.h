@@ -139,6 +139,8 @@ class UpdatesManager final : public Actor {
 
   void timeout_expired() final;
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr int32 FORCED_GET_DIFFERENCE_PTS_DIFF = 100000;
   static constexpr int32 GAP_TIMEOUT_UPDATE_COUNT = 20;

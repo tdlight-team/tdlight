@@ -135,6 +135,8 @@ class NotificationManager final : public Actor {
 
   void on_binlog_events(vector<BinlogEvent> &&events);
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr int32 DEFAULT_GROUP_COUNT_MAX = 0;
   static constexpr int32 DEFAULT_GROUP_SIZE_MAX = 10;

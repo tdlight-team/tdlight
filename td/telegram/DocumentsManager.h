@@ -31,6 +31,7 @@ class Td;
 
 class DocumentsManager {
  public:
+  void memory_stats(vector<string> &output);
   explicit DocumentsManager(Td *td);
   DocumentsManager(const DocumentsManager &) = delete;
   DocumentsManager &operator=(const DocumentsManager &) = delete;

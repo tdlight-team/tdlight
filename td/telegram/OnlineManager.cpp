@@ -161,4 +161,7 @@ void OnlineManager::on_ping_server_timeout() {
   set_is_bot_online(false);
 }
 
+void OnlineManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

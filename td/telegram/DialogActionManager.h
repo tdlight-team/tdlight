@@ -41,6 +41,8 @@ class DialogActionManager final : public Actor {
 
   void clear_active_dialog_actions(DialogId dialog_id);
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr double DIALOG_ACTION_TIMEOUT = 5.5;
 

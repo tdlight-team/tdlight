@@ -15,6 +15,7 @@
 #include "td/telegram/Contact.h"
 #include "td/telegram/DialogManager.h"
 #include "td/telegram/Document.h"
+#include "td/telegram/MemoryManager.h"
 #include "td/telegram/DocumentsManager.h"
 #include "td/telegram/files/FileManager.h"
 #include "td/telegram/files/FileType.h"
@@ -2238,6 +2239,16 @@ void InlineQueriesManager::remove_recent_inline_bot(UserId bot_user_id, Promise<
     save_recently_used_bots();
   }
   promise.set_value(Unit());
+}
+
+void InlineQueriesManager::memory_stats(vector<string> &output) {
+  output.push_back("\"recently_used_bot_user_ids_\":"); output.push_back(std::to_string(this->recently_used_bot_user_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"inline_query_results_\":"); output.push_back(std::to_string(this->inline_query_results_.size()));
+  output.push_back(",");
+  output.push_back("\"inline_message_contents_\":"); output.push_back(std::to_string(this->inline_message_contents_.size()));
+  output.push_back(",");
+  output.push_back("\"query_id_to_bot_user_id_\":"); output.push_back(std::to_string(this->query_id_to_bot_user_id_.size()));
 }
 
 }  // namespace td

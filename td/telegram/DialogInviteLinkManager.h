@@ -85,6 +85,8 @@ class DialogInviteLinkManager final : public Actor {
 
   void delete_all_revoked_dialog_invite_links(DialogId dialog_id, UserId creator_user_id, Promise<Unit> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr size_t MAX_INVITE_LINK_TITLE_LENGTH = 32;  // server side limit
 

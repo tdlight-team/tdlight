@@ -46,6 +46,7 @@
 #include "td/telegram/LinkManager.h"
 #include "td/telegram/Location.h"
 #include "td/telegram/logevent/LogEvent.h"
+#include "td/telegram/MemoryManager.h"
 #include "td/telegram/MessageContent.h"
 #include "td/telegram/MessageDb.h"
 #include "td/telegram/MessageEntity.h"
@@ -5949,6 +5950,7 @@ void MessagesManager::update_message_reply_count(Dialog *d, MessageId message_id
   }
 }
 
+
 bool MessagesManager::have_dialog_scheduled_messages_in_memory(const Dialog *d) {
   return d->scheduled_messages != nullptr && !d->scheduled_messages->scheduled_messages_.empty();
 }
@@ -9664,6 +9666,9 @@ void MessagesManager::on_get_recent_locations(DialogId dialog_id, int32 limit, i
 }
 
 void MessagesManager::delete_messages_from_updates(const vector<MessageId> &message_ids, bool is_permanent) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   FlatHashMap<DialogId, vector<int64>, DialogIdHash> deleted_message_ids;
   FlatHashMap<DialogId, bool, DialogIdHash> need_update_dialog_pos;
   vector<unique_ptr<Message>> deleted_messages;
@@ -11252,6 +11257,9 @@ void MessagesManager::read_all_dialog_reactions_on_server(DialogId dialog_id, ui
 }
 
 void MessagesManager::read_message_content_from_updates(MessageId message_id, int32 read_date) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   if (!message_id.is_valid() || !message_id.is_server()) {
     LOG(ERROR) << "Incoming update tries to read content of " << message_id;
     return;
@@ -15023,7 +15031,8 @@ void MessagesManager::on_get_dialogs(FolderId folder_id, vector<tl_object_ptr<te
 }
 
 bool MessagesManager::is_message_unload_enabled() const {
-  return G()->use_message_database() || td_->auth_manager_->is_bot();
+  auto has_custom_unload_time = G()->have_option("message_unload_delay");
+  return G()->use_message_database() || td_->auth_manager_->is_bot() || has_custom_unload_time;
 }
 
 bool MessagesManager::can_unload_message(const Dialog *d, const Message *m) const {
@@ -15548,7 +15557,9 @@ void MessagesManager::on_message_deleted(Dialog *d, Message *m, bool is_permanen
     case DialogType::User:
     case DialogType::Chat:
       if (m->message_id.is_server()) {
-        message_id_to_dialog_id_.erase(m->message_id);
+        if (!G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+          message_id_to_dialog_id_.erase(m->message_id);
+        }
       }
       break;
     case DialogType::Channel:
@@ -29072,6 +29083,10 @@ void MessagesManager::send_update_chat_last_message_impl(const Dialog *d, const 
     return;
   }
 
+  if (G()->get_option_boolean("ignore_update_chat_last_message")) {
+    return;
+  }
+
   CHECK(d != nullptr);
   LOG_CHECK(d->is_update_new_chat_sent) << "Wrong " << d->dialog_id << " in send_update_chat_last_message from "
                                         << source;
@@ -29216,10 +29231,12 @@ void MessagesManager::send_update_chat_read_inbox(const Dialog *d, bool force, c
     LOG(INFO) << "Send updateChatReadInbox in " << d->dialog_id << "("
               << td_->dialog_manager_->get_dialog_title(d->dialog_id) << ") to " << d->server_unread_count << " + "
               << d->local_unread_count << " from " << source;
+    if (!G()->get_option_boolean("ignore_update_chat_read_inbox")) {
     send_closure(G()->td(), &Td::send_update,
                  td_api::make_object<td_api::updateChatReadInbox>(
                      get_chat_id_object(d->dialog_id, "updateChatReadInbox"), d->last_read_inbox_message_id.get(),
                      d->server_unread_count + d->local_unread_count));
+    }
   }
 }
 
@@ -38526,6 +38543,10 @@ void MessagesManager::suffix_load_query_ready(DialogId dialog_id) {
 
   LOG(INFO) << "Finished suffix load query in " << dialog_id;
   auto *d = get_dialog(dialog_id);
+  if (d == nullptr) {
+    LOG(ERROR) << "Unknown dialog " << dialog_id;
+    return;
+  }
   bool is_unchanged = queries->suffix_load_first_message_id_ == queries->suffix_load_query_message_id_;
   suffix_load_update_first_message_id(d, queries);
   if (is_unchanged && queries->suffix_load_first_message_id_ == queries->suffix_load_query_message_id_) {
@@ -38800,7 +38821,10 @@ void MessagesManager::set_sponsored_dialog(DialogId dialog_id, DialogSource sour
       CHECK(sponsored_dialog_id_.is_valid());
       sponsored_dialog_source_ = std::move(source);
       const Dialog *d = get_dialog(sponsored_dialog_id_);
-      CHECK(d != nullptr);
+      if (d == nullptr) {
+        LOG(ERROR) << "Unknown dialog " << dialog_id;
+        return;
+      }
       send_update_chat_position(DialogListId(FolderId::main()), d, "set_sponsored_dialog");
       save_sponsored_dialog();
     }
@@ -38810,7 +38834,10 @@ void MessagesManager::set_sponsored_dialog(DialogId dialog_id, DialogSource sour
   bool need_update_total_chat_count = false;
   if (sponsored_dialog_id_.is_valid()) {
     const Dialog *d = get_dialog(sponsored_dialog_id_);
-    CHECK(d != nullptr);
+    if (d == nullptr) {
+      LOG(ERROR) << "Unknown dialog " << dialog_id;
+      return;
+    }
     bool was_sponsored = is_dialog_sponsored(d);
     sponsored_dialog_id_ = DialogId();
     sponsored_dialog_source_ = DialogSource();
@@ -38823,7 +38850,10 @@ void MessagesManager::set_sponsored_dialog(DialogId dialog_id, DialogSource sour
   if (dialog_id.is_valid()) {
     force_create_dialog(dialog_id, "set_sponsored_dialog_id");
     const Dialog *d = get_dialog(dialog_id);
-    CHECK(d != nullptr);
+    if (d == nullptr) {
+      LOG(ERROR) << "Unknown dialog " << dialog_id;
+      return;
+    }
     add_sponsored_dialog(d, std::move(source));
     if (is_dialog_sponsored(d)) {
       need_update_total_chat_count = !need_update_total_chat_count;
@@ -38950,6 +38980,148 @@ void MessagesManager::get_message_file_search_text(MessageFullId message_full_id
     }
   }
   return promise.set_error(Status::Error(200, "File not found"));
+}
+
+void MessagesManager::memory_stats(vector<string> &output) {
+  output.push_back("\"being_uploaded_files_\":"); output.push_back(std::to_string(this->being_uploaded_files_.size()));
+  output.push_back(",");
+  output.push_back("\"being_uploaded_thumbnails_\":"); output.push_back(std::to_string(this->being_uploaded_thumbnails_.size()));
+  output.push_back(",");
+  output.push_back("\"being_loaded_secret_thumbnails_\":"); output.push_back(std::to_string(this->being_loaded_secret_thumbnails_.size()));
+  output.push_back(",");
+  output.push_back("\"being_sent_messages_\":"); output.push_back(std::to_string(this->being_sent_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"update_message_ids_\":"); output.push_back(std::to_string(this->update_message_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_message_group_sends_\":"); output.push_back(std::to_string(this->pending_message_group_sends_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_paid_media_group_sends_\":"); output.push_back(std::to_string(this->pending_paid_media_group_sends_.size()));
+  output.push_back(",");
+  output.push_back("\"message_id_to_dialog_id_\":"); output.push_back(std::to_string(this->message_id_to_dialog_id_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"last_clear_history_message_id_to_dialog_id_\":"); output.push_back(std::to_string(this->last_clear_history_message_id_to_dialog_id_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_created_dialogs_\":"); output.push_back(std::to_string(this->pending_created_dialogs_.size()));
+  output.push_back(",");
+  output.push_back("\"dialogs_\":"); output.push_back(std::to_string(this->dialogs_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"loaded_dialogs_\":"); output.push_back(std::to_string(this->loaded_dialogs_.size()));
+  output.push_back(",");
+  output.push_back("\"failed_to_load_dialogs_\":"); output.push_back(std::to_string(this->failed_to_load_dialogs_.size()));
+  output.push_back(",");
+  output.push_back("\"postponed_chat_read_inbox_updates_\":"); output.push_back(std::to_string(this->postponed_chat_read_inbox_updates_.size()));
+  output.push_back(",");
+  output.push_back("\"search_public_dialogs_queries_\":"); output.push_back(std::to_string(this->search_public_dialogs_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"found_public_dialogs_\":"); output.push_back(std::to_string(this->found_public_dialogs_.size()));
+  output.push_back(",");
+  output.push_back("\"found_on_server_dialogs_\":"); output.push_back(std::to_string(this->found_on_server_dialogs_.size()));
+  output.push_back(",");
+  output.push_back("\"found_dialog_messages_\":"); output.push_back(std::to_string(this->found_dialog_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"found_dialog_messages_dialog_id_\":"); output.push_back(std::to_string(this->found_dialog_messages_dialog_id_.size()));
+  output.push_back(",");
+  output.push_back("\"get_dialog_queries_\":"); output.push_back(std::to_string(this->get_dialog_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"get_dialog_query_log_event_id_\":"); output.push_back(std::to_string(this->get_dialog_query_log_event_id_.size()));
+  output.push_back(",");
+  output.push_back("\"replied_by_yet_unsent_messages_\":"); output.push_back(std::to_string(this->replied_by_yet_unsent_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"replied_yet_unsent_messages_\":"); output.push_back(std::to_string(this->replied_yet_unsent_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"message_to_replied_media_timestamp_messages_\":"); output.push_back(std::to_string(this->message_to_replied_media_timestamp_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"story_to_replied_media_timestamp_messages_\":"); output.push_back(std::to_string(this->story_to_replied_media_timestamp_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"notification_group_id_to_dialog_id_\":"); output.push_back(std::to_string(this->notification_group_id_to_dialog_id_.size()));
+  output.push_back(",");
+  output.push_back("\"active_get_channel_differences_\":"); output.push_back(std::to_string(this->active_get_channel_differences_.size()));
+  output.push_back(",");
+  output.push_back("\"get_channel_difference_to_log_event_id_\":"); output.push_back(std::to_string(this->get_channel_difference_to_log_event_id_.size()));
+  output.push_back(",");
+  output.push_back("\"channel_get_difference_retry_timeouts_\":"); output.push_back(std::to_string(this->channel_get_difference_retry_timeouts_.size()));
+  output.push_back(",");
+  output.push_back("\"postponed_channel_updates_\":"); output.push_back(std::to_string(this->postponed_channel_updates_.size()));
+  output.push_back(",");
+  output.push_back("\"is_channel_difference_finished_\":"); output.push_back(std::to_string(this->is_channel_difference_finished_.size()));
+  output.push_back(",");
+  output.push_back("\"expected_channel_pts_\":"); output.push_back(std::to_string(this->expected_channel_pts_.size()));
+  output.push_back(",");
+  output.push_back("\"expected_channel_max_message_id_\":"); output.push_back(std::to_string(this->expected_channel_max_message_id_.size()));
+  output.push_back(",");
+  output.push_back("\"active_live_location_message_full_ids_\":"); output.push_back(std::to_string(this->active_live_location_message_full_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"load_active_live_location_messages_queries_\":"); output.push_back(std::to_string(this->load_active_live_location_messages_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"load_scheduled_messages_from_database_queries_\":"); output.push_back(std::to_string(this->load_scheduled_messages_from_database_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"get_dialogs_tasks_\":"); output.push_back(std::to_string(this->get_dialogs_tasks_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_on_get_dialogs_\":"); output.push_back(std::to_string(this->pending_on_get_dialogs_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_channel_on_get_dialogs_\":"); output.push_back(std::to_string(this->pending_channel_on_get_dialogs_.size()));
+  output.push_back(",");
+  output.push_back("\"run_after_get_channel_difference_\":"); output.push_back(std::to_string(this->run_after_get_channel_difference_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_secret_message_ids_\":"); output.push_back(std::to_string(this->pending_secret_message_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_add_dialog_dependent_dialogs_\":"); output.push_back(std::to_string(this->pending_add_dialog_dependent_dialogs_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_add_dialog_data_\":"); output.push_back(std::to_string(this->pending_add_dialog_data_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_add_default_join_group_call_as_dialog_id_\":"); output.push_back(std::to_string(this->pending_add_default_join_group_call_as_dialog_id_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_add_default_send_message_as_dialog_id_\":"); output.push_back(std::to_string(this->pending_add_default_send_message_as_dialog_id_.size()));
+  output.push_back(",");
+  output.push_back("\"dialog_bot_command_message_ids_\":"); output.push_back(std::to_string(this->dialog_bot_command_message_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"viewed_live_location_tasks_\":"); output.push_back(std::to_string(this->viewed_live_location_tasks_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_viewed_live_locations_\":"); output.push_back(std::to_string(this->pending_viewed_live_locations_.size()));
+  output.push_back(",");
+  output.push_back("\"yet_unsent_media_queues_\":"); output.push_back(std::to_string(this->yet_unsent_media_queues_.size()));
+  output.push_back(",");
+  output.push_back("\"message_full_id_to_file_source_id_\":"); output.push_back(std::to_string(this->message_full_id_to_file_source_id_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"last_outgoing_forwarded_message_date_\":"); output.push_back(std::to_string(this->last_outgoing_forwarded_message_date_.size()));
+  output.push_back(",");
+  output.push_back("\"dialog_viewed_messages_\":"); output.push_back(std::to_string(this->dialog_viewed_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"being_reloaded_reactions_\":"); output.push_back(std::to_string(this->being_reloaded_reactions_.size()));
+  output.push_back(",");
+  output.push_back("\"being_reloaded_fact_checks_\":"); output.push_back(std::to_string(this->being_reloaded_fact_checks_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_dialog_group_call_updates_\":"); output.push_back(std::to_string(this->pending_dialog_group_call_updates_.size()));
+  output.push_back(",");
+  output.push_back("\"auth_notification_id_date_\":"); output.push_back(std::to_string(this->auth_notification_id_date_.size()));
+  output.push_back(",");
+  output.push_back("\"previous_repaired_read_inbox_max_message_id_\":"); output.push_back(std::to_string(this->previous_repaired_read_inbox_max_message_id_.size()));
+  output.push_back(",");
+  output.push_back("\"yet_unsent_message_full_id_to_persistent_message_id_\":"); output.push_back(std::to_string(this->yet_unsent_message_full_id_to_persistent_message_id_.size()));
+  output.push_back(",");
+  output.push_back("\"yet_unsent_thread_message_ids_\":"); output.push_back(std::to_string(this->yet_unsent_thread_message_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"dialog_suffix_load_queries_\":"); output.push_back(std::to_string(this->dialog_suffix_load_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_message_views_\":"); output.push_back(std::to_string(this->pending_message_views_.size()));
+  output.push_back(",");
+  output.push_back("\"read_history_log_event_ids_\":"); output.push_back(std::to_string(this->read_history_log_event_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"updated_read_history_message_ids_\":"); output.push_back(std::to_string(this->updated_read_history_message_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_reactions_\":"); output.push_back(std::to_string(this->pending_reactions_.size()));
+  output.push_back(",");
+  output.push_back("\"paid_reaction_task_ids_\":"); output.push_back(std::to_string(this->paid_reaction_task_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"paid_reaction_tasks_\":"); output.push_back(std::to_string(this->paid_reaction_tasks_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_read_reactions_\":"); output.push_back(std::to_string(this->pending_read_reactions_.size()));
+  output.push_back(",");
+  output.push_back("\"active_reaction_types_\":"); output.push_back(std::to_string(this->active_reaction_types_.size()));
+  output.push_back(",");
+  output.push_back("\"active_reaction_pos_\":"); output.push_back(std::to_string(this->active_reaction_pos_.size()));
+  output.push_back(",");
+  output.push_back("\"get_history_queries_\":"); output.push_back(std::to_string(this->get_history_queries_.size()));
 }
 
 }  // namespace td

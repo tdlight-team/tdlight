@@ -43,6 +43,8 @@ class CallbackQueriesManager {
   void send_callback_query(MessageFullId message_full_id, tl_object_ptr<td_api::CallbackQueryPayload> &&payload,
                            Promise<td_api::object_ptr<td_api::callbackQueryAnswer>> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr int32 BOT_CALLBACK_ANSWER_FLAG_HAS_MESSAGE = 1 << 0;
   static constexpr int32 BOT_CALLBACK_ANSWER_FLAG_NEED_SHOW_ALERT = 1 << 1;

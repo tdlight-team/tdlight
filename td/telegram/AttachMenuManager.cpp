@@ -1449,4 +1449,16 @@ void AttachMenuManager::get_current_state(vector<td_api::object_ptr<td_api::Upda
   updates.push_back(get_update_attachment_menu_bots_object());
 }
 
+void AttachMenuManager::memory_stats(vector<string> &output) {
+  output.push_back("\"attach_menu_bots_\":"); output.push_back(std::to_string(this->attach_menu_bots_.size()));
+  output.push_back(",");
+  output.push_back("\"attach_menu_bot_file_source_ids_\":"); output.push_back(std::to_string(this->attach_menu_bot_file_source_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"reload_attach_menu_bots_queries_\":"); output.push_back(std::to_string(this->reload_attach_menu_bots_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"web_app_file_source_ids_\":"); output.push_back(std::to_string(this->web_app_file_source_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"opened_web_views_\":"); output.push_back(std::to_string(this->opened_web_views_.size()));
+}
+
 }  // namespace td

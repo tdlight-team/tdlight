@@ -2340,4 +2340,20 @@ void DialogManager::on_dismiss_suggested_action(SuggestedAction action, Result<U
   set_promises(promises);
 }
 
+void DialogManager::memory_stats(vector<string> &output) {
+  output.push_back("\"being_uploaded_dialog_photos_\":"); output.push_back(std::to_string(this->being_uploaded_dialog_photos_.size()));
+  output.push_back(",");
+  output.push_back("\"resolved_usernames_\":"); output.push_back(std::to_string(this->resolved_usernames_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"inaccessible_resolved_usernames_\":"); output.push_back(std::to_string(this->inaccessible_resolved_usernames_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"reload_voice_chat_on_search_usernames_\":"); output.push_back(std::to_string(this->reload_voice_chat_on_search_usernames_.size()));
+  output.push_back(",");
+  output.push_back("\"resolve_dialog_username_queries_\":"); output.push_back(std::to_string(this->resolve_dialog_username_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"dialog_suggested_actions_\":"); output.push_back(std::to_string(this->dialog_suggested_actions_.size()));
+  output.push_back(",");
+  output.push_back("\"dismiss_suggested_action_queries_\":"); output.push_back(std::to_string(this->dismiss_suggested_action_queries_.size()));
+}
+
 }  // namespace td

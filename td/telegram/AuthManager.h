@@ -60,6 +60,8 @@ class AuthManager final : public NetActor {
   void on_authorization_lost(string source);
   void on_closing(bool destroy_flag);
 
+  void memory_stats(vector<string> &output);
+
   // can return nullptr if state isn't initialized yet
   tl_object_ptr<td_api::AuthorizationState> get_current_authorization_state_object() const;
 

@@ -6012,4 +6012,72 @@ void StoryManager::on_binlog_events(vector<BinlogEvent> &&events) {
   }
 }
 
+void StoryManager::memory_stats(vector<string> &output) {
+  output.push_back("\"story_full_id_to_file_source_id_\":"); output.push_back(std::to_string(this->story_full_id_to_file_source_id_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"stories_\":"); output.push_back(std::to_string(this->stories_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"stories_by_global_id_\":"); output.push_back(std::to_string(this->stories_by_global_id_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"inaccessible_story_full_ids_\":"); output.push_back(std::to_string(this->inaccessible_story_full_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"deleted_story_full_ids_\":"); output.push_back(std::to_string(this->deleted_story_full_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"failed_to_load_story_full_ids_\":"); output.push_back(std::to_string(this->failed_to_load_story_full_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"story_messages_\":"); output.push_back(std::to_string(this->story_messages_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"story_quick_reply_messages_\":"); output.push_back(std::to_string(this->story_quick_reply_messages_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"active_stories_\":"); output.push_back(std::to_string(this->active_stories_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"updated_active_stories_\":"); output.push_back(std::to_string(this->updated_active_stories_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"max_read_story_ids_\":"); output.push_back(std::to_string(this->max_read_story_ids_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"failed_to_load_active_stories_\":"); output.push_back(std::to_string(this->failed_to_load_active_stories_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"load_expiring_stories_log_event_ids_\":"); output.push_back(std::to_string(this->load_expiring_stories_log_event_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"being_edited_stories_\":"); output.push_back(std::to_string(this->being_edited_stories_.size()));
+  output.push_back(",");
+  output.push_back("\"edit_generations_\":"); output.push_back(std::to_string(this->edit_generations_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_story_views_\":"); output.push_back(std::to_string(this->pending_story_views_.size()));
+  output.push_back(",");
+  output.push_back("\"opened_stories_with_view_count_\":"); output.push_back(std::to_string(this->opened_stories_with_view_count_.size()));
+  output.push_back(",");
+  output.push_back("\"opened_stories_\":"); output.push_back(std::to_string(this->opened_stories_.size()));
+  output.push_back(",");
+  output.push_back("\"reload_story_queries_\":"); output.push_back(std::to_string(this->reload_story_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"being_uploaded_files_\":"); output.push_back(std::to_string(this->being_uploaded_files_.size()));
+  output.push_back(",");
+  output.push_back("\"yet_unsent_stories_\":"); output.push_back(std::to_string(this->yet_unsent_stories_.size()));
+  output.push_back(",");
+  output.push_back("\"yet_unsent_story_ids_\":"); output.push_back(std::to_string(this->yet_unsent_story_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"being_sent_stories_\":"); output.push_back(std::to_string(this->being_sent_stories_.size()));
+  output.push_back(",");
+  output.push_back("\"being_sent_story_random_ids_\":"); output.push_back(std::to_string(this->being_sent_story_random_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"being_uploaded_file_ids_\":"); output.push_back(std::to_string(this->being_uploaded_file_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"update_story_ids_\":"); output.push_back(std::to_string(this->update_story_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"delete_yet_unsent_story_queries_\":"); output.push_back(std::to_string(this->delete_yet_unsent_story_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"ready_to_send_stories_\":"); output.push_back(std::to_string(this->ready_to_send_stories_.size()));
+  output.push_back(",");
+  output.push_back("\"being_reloaded_active_stories_dialog_ids_\":"); output.push_back(std::to_string(this->being_reloaded_active_stories_dialog_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"channels_to_send_stories_\":"); output.push_back(std::to_string(this->channels_to_send_stories_.size()));
+  output.push_back(",");
+  output.push_back("\"get_dialogs_to_send_stories_queries_\":"); output.push_back(std::to_string(this->get_dialogs_to_send_stories_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"being_set_story_reactions_\":"); output.push_back(std::to_string(this->being_set_story_reactions_.size()));
+  output.push_back(",");
+  output.push_back("\"current_yet_unsent_story_ids_\":"); output.push_back(std::to_string(this->current_yet_unsent_story_ids_.size()));
+}
+
 }  // namespace td

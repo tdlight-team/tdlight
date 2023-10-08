@@ -376,8 +376,16 @@ Status TdDb::init_sqlite(const Parameters &parameters, const DbKey &key, const D
   sql_connection_ = std::make_shared<SqliteConnectionSafe>(sql_database_path, key, db_instance.get_cipher_version());
   sql_connection_->set(std::move(db_instance));
   auto &db = sql_connection_->get();
-  TRY_STATUS(db.exec("PRAGMA journal_mode=WAL"));
-  TRY_STATUS(db.exec("PRAGMA secure_delete=1"));
+  if (parameters.use_custom_database_format_) {
+    TRY_STATUS(db.exec("PRAGMA journal_mode=OFF"));
+    TRY_STATUS(db.exec("PRAGMA synchronous=OFF"))
+    TRY_STATUS(db.exec("PRAGMA temp_store=MEMORY"));
+    TRY_STATUS(db.exec("PRAGMA secure_delete=0"));
+    TRY_STATUS(db.exec("PRAGMA mmap_size=30000000000"));
+  } else {
+    TRY_STATUS(db.exec("PRAGMA journal_mode=WAL"));
+    TRY_STATUS(db.exec("PRAGMA secure_delete=1"));
+  }
 
   // Init databases
   // Do initialization once and before everything else to avoid "database is locked" error.
@@ -662,8 +670,15 @@ Status TdDb::check_parameters(Parameters &parameters) {
   return Status::OK();
 }
 
-DbKey TdDb::as_db_key(string key) {
+DbKey TdDb::as_db_key(string key, bool custom_db) {
+  // Database will still be effectively not encrypted, but
+  // 1. SQLite database will be protected from corruption, because that's how sqlcipher works
+  // 2. security through obscurity
+  // 3. no need for reencryption of SQLite database
   if (key.empty()) {
+    if (custom_db) {
+      return DbKey::empty();
+    }
     return DbKey::raw_key("cucumber");
   }
   return DbKey::raw_key(std::move(key));

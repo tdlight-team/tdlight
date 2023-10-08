@@ -1004,4 +1004,7 @@ td_api::object_ptr<td_api::StatisticalGraph> StatisticsManager::convert_stats_gr
   return ::td::convert_stats_graph(std::move(obj));
 }
 
+void StatisticsManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

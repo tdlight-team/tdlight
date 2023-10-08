@@ -61,6 +61,8 @@ class BusinessManager final : public Actor {
 
   void set_business_intro(BusinessIntro &&intro, Promise<Unit> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   void tear_down() final;
 

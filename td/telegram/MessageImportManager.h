@@ -40,6 +40,8 @@ class MessageImportManager final : public Actor {
   void start_import_messages(DialogId dialog_id, int64 import_id, vector<FileId> &&attached_file_ids,
                              Promise<Unit> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   void tear_down() final;
 

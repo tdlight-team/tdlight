@@ -42,6 +42,8 @@ class SponsoredMessageManager final : public Actor {
   void report_sponsored_message(DialogId dialog_id, MessageId sponsored_message_id, const string &option_id,
                                 Promise<td_api::object_ptr<td_api::ReportChatSponsoredMessageResult>> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   struct SponsoredMessage;
   struct SponsoredMessageInfo;

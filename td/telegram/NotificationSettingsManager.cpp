@@ -1756,4 +1756,18 @@ void NotificationSettingsManager::get_current_state(vector<td_api::object_ptr<td
   }
 }
 
+void NotificationSettingsManager::memory_stats(vector<string> &output) {
+  output.push_back("\"saved_ringtone_file_ids_\":"); output.push_back(std::to_string(this->saved_ringtone_file_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"sorted_saved_ringtone_file_ids_\":"); output.push_back(std::to_string(this->sorted_saved_ringtone_file_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"being_uploaded_ringtones_\":"); output.push_back(std::to_string(this->being_uploaded_ringtones_.size()));
+  output.push_back(",");
+  output.push_back("\"reload_saved_ringtones_queries_\":"); output.push_back(std::to_string(this->reload_saved_ringtones_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"repair_saved_ringtones_queries_\":"); output.push_back(std::to_string(this->repair_saved_ringtones_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"get_dialog_notification_settings_queries_\":"); output.push_back(std::to_string(this->get_dialog_notification_settings_queries_.size()));
+}
+
 }  // namespace td

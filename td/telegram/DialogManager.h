@@ -227,6 +227,8 @@ class DialogManager final : public Actor {
 
   void remove_dialog_suggested_action(SuggestedAction action);
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr size_t MAX_TITLE_LENGTH = 128;  // server side limit for chat title
 

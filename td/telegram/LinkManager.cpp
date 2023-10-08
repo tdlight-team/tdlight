@@ -3334,4 +3334,12 @@ Result<MessageLinkInfo> LinkManager::get_message_link_info(Slice url) {
   return std::move(info);
 }
 
+void LinkManager::memory_stats(vector<string> &output) {
+  output.push_back("\"autologin_domains_\":"); output.push_back(std::to_string(this->autologin_domains_.size()));
+  output.push_back(",");
+  output.push_back("\"url_auth_domains_\":"); output.push_back(std::to_string(this->url_auth_domains_.size()));
+  output.push_back(",");
+  output.push_back("\"whitelisted_domains_\":"); output.push_back(std::to_string(this->whitelisted_domains_.size()));
+}
+
 }  // namespace td

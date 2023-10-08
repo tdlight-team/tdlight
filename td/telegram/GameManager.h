@@ -38,6 +38,8 @@ class GameManager final : public Actor {
   td_api::object_ptr<td_api::gameHighScores> get_game_high_scores_object(
       telegram_api::object_ptr<telegram_api::messages_highScores> &&high_scores);
 
+  void memory_stats(vector<string> &output);
+
  private:
   void tear_down() final;
 

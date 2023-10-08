@@ -16,6 +16,7 @@
 #include "td/telegram/DialogParticipantManager.h"
 #include "td/telegram/Global.h"
 #include "td/telegram/MessageId.h"
+#include "td/telegram/MemoryManager.h"
 #include "td/telegram/MessageSender.h"
 #include "td/telegram/MessagesManager.h"
 #include "td/telegram/misc.h"
@@ -1164,7 +1165,7 @@ bool GroupCallManager::is_group_call_joined(InputGroupCallId input_group_call_id
 }
 
 GroupCallId GroupCallManager::get_group_call_id(InputGroupCallId input_group_call_id, DialogId dialog_id) {
-  if (td_->auth_manager_->is_bot() || !input_group_call_id.is_valid()) {
+  if (G()->get_option_boolean("disable_group_calls") || td_->auth_manager_->is_bot() || !input_group_call_id.is_valid()) {
     return GroupCallId();
   }
   return add_group_call(input_group_call_id, dialog_id)->group_call_id;
@@ -4141,7 +4142,7 @@ void GroupCallManager::on_update_group_call_connection(string &&connection_param
 }
 
 void GroupCallManager::on_update_group_call(tl_object_ptr<telegram_api::GroupCall> group_call_ptr, DialogId dialog_id) {
-  if (td_->auth_manager_->is_bot()) {
+  if (G()->get_option_boolean("disable_group_calls") || td_->auth_manager_->is_bot()) {
     return;
   }
   if (dialog_id != DialogId() && !dialog_id.is_valid()) {
@@ -4849,21 +4850,48 @@ tl_object_ptr<td_api::updateGroupCallParticipant> GroupCallManager::get_update_g
 
 void GroupCallManager::send_update_group_call(const GroupCall *group_call, const char *source) {
   LOG(INFO) << "Send update about " << group_call->group_call_id << " from " << source;
+  if (G()->get_option_boolean("disable_group_calls")) {
+    return;
+  }
   send_closure(G()->td(), &Td::send_update,
                get_update_group_call_object(group_call, get_recent_speakers(group_call, true)));
 }
 
 void GroupCallManager::send_update_group_call_participant(GroupCallId group_call_id,
                                                           const GroupCallParticipant &participant, const char *source) {
+  if (G()->get_option_boolean("disable_group_calls")) {
+    return;
+  }
   LOG(INFO) << "Send update about " << participant << " in " << group_call_id << " from " << source;
   send_closure(G()->td(), &Td::send_update, get_update_group_call_participant_object(group_call_id, participant));
 }
 
 void GroupCallManager::send_update_group_call_participant(InputGroupCallId input_group_call_id,
                                                           const GroupCallParticipant &participant, const char *source) {
+  if (G()->get_option_boolean("disable_group_calls")) {
+    return;
+  }
   auto group_call = get_group_call(input_group_call_id);
   CHECK(group_call != nullptr && group_call->is_inited);
   send_update_group_call_participant(group_call->group_call_id, participant, source);
+}
+
+void GroupCallManager::memory_stats(vector<string> &output) {
+  output.push_back("\"input_group_call_ids_\":"); output.push_back(std::to_string(this->input_group_call_ids_.size()));
+  output.push_back(",");
+  output.push_back("\"group_calls_\":"); output.push_back(std::to_string(this->group_calls_.size()));
+  output.push_back(",");
+  output.push_back("\"group_call_participants_\":"); output.push_back(std::to_string(this->group_call_participants_.size()));
+  output.push_back(",");
+  output.push_back("\"participant_id_to_group_call_id_\":"); output.push_back(std::to_string(this->participant_id_to_group_call_id_.size()));
+  output.push_back(",");
+  output.push_back("\"group_call_recent_speakers_\":"); output.push_back(std::to_string(this->group_call_recent_speakers_.size()));
+  output.push_back(",");
+  output.push_back("\"load_group_call_queries_\":"); output.push_back(std::to_string(this->load_group_call_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_join_requests_\":"); output.push_back(std::to_string(this->pending_join_requests_.size()));
+  output.push_back(",");
+  output.push_back("\"pending_join_presentation_requests_\":"); output.push_back(std::to_string(this->pending_join_presentation_requests_.size()));
 }
 
 }  // namespace td

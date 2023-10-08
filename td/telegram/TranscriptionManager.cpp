@@ -441,4 +441,12 @@ void TranscriptionManager::get_current_state(vector<td_api::object_ptr<td_api::U
   updates.push_back(get_update_speech_recognition_trial_object());
 }
 
+void TranscriptionManager::memory_stats(vector<string> &output) {
+  output.push_back("\"pending_audio_transcriptions_\":"); output.push_back(std::to_string(this->pending_audio_transcriptions_.size()));
+  output.push_back(",");
+  output.push_back("\"voice_messages_\":"); output.push_back(std::to_string(this->voice_messages_.size()));
+  output.push_back(",");
+  output.push_back("\"message_file_ids_\":"); output.push_back(std::to_string(this->message_file_ids_.size()));
+}
+
 }  // namespace td

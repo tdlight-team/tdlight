@@ -1458,4 +1458,14 @@ void BusinessConnectionManager::get_current_state(vector<td_api::object_ptr<td_a
   });
 }
 
+void BusinessConnectionManager::memory_stats(vector<string> &output) {
+  output.push_back("\"business_connections_\":"); output.push_back(std::to_string(this->business_connections_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"media_group_send_requests_\":"); output.push_back(std::to_string(this->media_group_send_requests_.size()));
+  output.push_back(",");
+  output.push_back("\"being_uploaded_files_\":"); output.push_back(std::to_string(this->being_uploaded_files_.size()));
+  output.push_back(",");
+  output.push_back("\"being_uploaded_thumbnails_\":"); output.push_back(std::to_string(this->being_uploaded_thumbnails_.size()));
+}
+
 }  // namespace td

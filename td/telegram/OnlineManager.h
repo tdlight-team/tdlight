@@ -33,6 +33,8 @@ class OnlineManager final : public Actor {
 
   void set_is_bot_online(bool is_bot_online);
 
+  void memory_stats(vector<string> &output);
+
  private:
   static constexpr int32 PING_SERVER_TIMEOUT = 300;
 

@@ -34,6 +34,8 @@ class TimeZoneManager final : public Actor {
 
   void reload_time_zones(Promise<td_api::object_ptr<td_api::timeZones>> &&promise);
 
+  void memory_stats(vector<string> &output);
+
  private:
   void tear_down() final;
 
