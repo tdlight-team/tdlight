@@ -2,7 +2,7 @@
 <html>
 
 <head>
-  <title>TDLib build instructions</title>
+  <title>TDLight build instructions</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
@@ -193,7 +193,7 @@
 
 <div class="main">
   <div id="languageSelectDiv">
-    <p>Choose a programming language from which you want to use TDLib:</p>
+    <p>Choose a programming language from which you want to use TDLight:</p>
     <select id="languageSelect" onchange="onLanguageChanged(false)" autofocus class="large">
       <option>Choose a programming language:</option>
       <option>Python</option>
@@ -226,7 +226,7 @@
   </div>
 
   <div id="osSelectDiv" class="hide">
-    <p>Choose an operating system on which you want to use TDLib:</p>
+    <p>Choose an operating system on which you want to use TDLight:</p>
     <select id="osSelect" onchange="onOsChanged()" class="large">
       <option>Choose an operating system:</option>
     </select>
@@ -234,7 +234,7 @@
   </div>
 
   <div id="linuxSelectDiv" class="hide">
-    <p>Choose a Linux distro on which you want to use TDLib:</p>
+    <p>Choose a Linux distro on which you want to use TDLight:</p>
     <select id="linuxSelect" onchange="onOsChanged()" class="large">
       <option>Choose a Linux distro:</option>
       <option>Alpine</option>
@@ -263,13 +263,13 @@
     </div>
 
     <div id="buildInstallLocalDiv" class="hide">
-      <label><input type="checkbox" id="buildInstallLocalCheckbox" onchange="onOptionsChanged()"/>Install built TDLib to /usr/local instead of placing the files to td/tdlib.</label>
+      <label><input type="checkbox" id="buildInstallLocalCheckbox" onchange="onOptionsChanged()"/>Install built TDLight to /usr/local instead of placing the files to td/tdlib.</label>
     </div>
 
     <p></p>
 
     <div id="buildCompilerDiv" class="hide">
-      <span>Choose which compiler you want to use to build TDLib:</span><br>
+      <span>Choose which compiler you want to use to build TDLight:</span><br>
       <label><input type="radio" id="buildCompilerRadioGcc" name="buildCompilerRadio" onchange="onOptionsChanged()" checked/>g++</label>
       <label><input type="radio" id="buildCompilerRadioClang" name="buildCompilerRadio" onchange="onOptionsChanged()"/>clang (recommended)</label>
       <p></p>
@@ -305,7 +305,7 @@
     </div>
 
     <div id="buildBitnessDiv" class="hide">
-      <span>Choose for which bitness you want to build TDLib:</span><br>
+      <span>Choose for which bitness you want to build TDLight:</span><br>
       <label><input type="radio" id="buildBitnessRadio32" name="buildBitnessRadio" onchange="onOptionsChanged()" checked/>32</label>
       <label><input type="radio" id="buildBitnessRadio64" name="buildBitnessRadio" onchange="onOptionsChanged()"/>64</label>
       <p></p>
@@ -327,7 +327,7 @@
   </div>
 
   <div id="buildCommandsDiv" class="hide">
-    <p id="buildCommandsHeader">Here is complete instruction for TDLib binaries building:</p>
+    <p id="buildCommandsHeader">Here is complete instruction for TDLight binaries building:</p>
     <p id="buildPre">Hidden text</p>
     <code id="buildCommands">Empty commands</code>
     <button id="copyBuildCommandsButton" onclick="copyBuildInstructions()">
@@ -494,14 +494,14 @@ function getTargetName(target) {
     case 'tdjson':
     case 'WebAssembly':
     case 'iOS':
-      return '<a href="https://github.com/tdlib/td#using-json">JSON</a>';
+      return '<a href="https://github.com/tdlight-team/tdlight#using-json">JSON</a>';
     case 'tdclient':
-      return '<a href="https://github.com/tdlib/td#using-cxx">a simple and convenient C++11-interface</a>';
+      return '<a href="https://github.com/tdlight-team/tdlight#using-cxx">a simple and convenient C++11-interface</a>';
     case 'JNI':
     case 'Android':
-      return '<a href="https://github.com/tdlib/td#using-java">native ' + target + '</a>';
+      return '<a href="https://github.com/tdlight-team/tdlight#using-java">native ' + target + '</a>';
     default:
-      return '<a href="https://github.com/tdlib/td#using-dotnet">native ' + target + '</a>';
+      return '<a href="https://github.com/tdlight-team/tdlight#using-dotnet">native ' + target + '</a>';
   }
 }
 
@@ -515,17 +515,17 @@ function onOsChanged() {
   if (language === 'Other') {
     language = 'any other programming language';
   }
-  var text = 'TDLib can be used from ' + language + ' on ' + os + ' through the ' + getTargetName(target) + ' interface.<br>' +
-             'See <a href="https://github.com/tdlib/td/blob/master/example/README.md#' + getExampleAnchor(language) + '">examples</a> of such usage and already available third-party frameworks.<br>';
+  var text = 'TDLight can be used from ' + language + ' on ' + os + ' through the ' + getTargetName(target) + ' interface.<br>' +
+             'See <a href="https://github.com/tdlight-team/tdlight/blob/master/example/README.md#' + getExampleAnchor(language) + '">examples</a> of such usage and already available third-party frameworks.<br>';
 
   if (target === 'WebAssembly') {
-    text = 'TDLib is available in a prebuilt form as an <a href="https://www.npmjs.com/">NPM</a> package <a href="https://www.npmjs.com/package/tdweb">tdweb</a>.<br>' +
-           'If you want to build it manually, take a look at our <a href="https://github.com/tdlib/td/tree/master/example/web">example</a>.';
+    text = 'TDLight is available in a prebuilt form as an <a href="https://www.npmjs.com/">NPM</a> package <a href="https://www.npmjs.com/package/tdweb">tdweb</a>.<br>' +
+           'If you want to build it manually, take a look at our <a href="https://github.com/tdlight-team/tdlight/tree/master/example/web">example</a>.';
     target = '';
   }
   if (target === 'Android') {
-    text = 'TDLib for Android is available in a prebuilt form and can be downloaded from <a href="https://core.telegram.org/tdlib/tdlib.zip">there</a>.<br>' +
-           'See <a href="https://github.com/tdlib/td/issues/77#issuecomment-640719893">build instructions</a> if you want to build the latest TDLib version or want to build TDLib with different interface.';
+    text = 'TDLight for Android is available in a prebuilt form and can be downloaded from <a href="https://core.telegram.org/tdlight-team/tdlightlib.zip">there</a>.<br>' +
+           'See <a href="https://github.com/tdlight-team/tdlight/issues/77#issuecomment-640719893">build instructions</a> if you want to build the latest TDLight version or want to build TDLight with different interface.';
     target = '';
   }
   if (target === 'iOS') {
@@ -590,7 +590,7 @@ function onOptionsChanged() {
   if (os_linux || os_freebsd || os_netbsd) {
     low_memory = document.getElementById('buildLowMemoryCheckbox').checked;
     document.getElementById('buildLowMemoryText').innerHTML = 'I have less than ' + (use_clang ? '1.5' : '3.5') +' GB of RAM.' +
-            (low_memory ? ' Now you will need only ' + (use_clang ? '0.5' : '1') +' GB of RAM to build TDLib.' : '');
+            (low_memory ? ' Now you will need only ' + (use_clang ? '0.5' : '1') +' GB of RAM to build TDLight.' : '');
     document.getElementById('buildLowMemoryDiv').style.display = 'block';
   } else {
     if (os_openbsd) {
@@ -751,8 +751,8 @@ function onOptionsChanged() {
     pre_text.push('Note that the following instruction is for NetBSD 8+ and default SH shell.');
   }
   if (os_mac) {
-    pre_text.push('Note that the following instruction will build TDLib only for ' + os_mac_host_name + '.');
-    pre_text.push('If you want to create a universal XCFramework, take a look at our <a href="https://github.com/tdlib/td/tree/master/example/ios">example</a> instead.');
+    pre_text.push('Note that the following instruction will build TDLight only for ' + os_mac_host_name + '.');
+    pre_text.push('If you want to create a universal XCFramework, take a look at our <a href="https://github.com/tdlight-team/tdlight/tree/master/example/ios">example</a> instead.');
   }
 
   var terminal_name = (function () {
@@ -776,12 +776,12 @@ function onOptionsChanged() {
   if (os_windows) {
     pre_text.push('Close and re-open ' + terminal_name + ' if the PATH environment variable was changed.');
   }
-  pre_text.push('Run these commands in ' + terminal_name + ' to build TDLib and to install it to ' + install_dir + ':');
+  pre_text.push('Run these commands in ' + terminal_name + ' to build TDLight and to install it to ' + install_dir + ':');
   document.getElementById('buildPre').innerHTML = '<ul><li>' + pre_text.join('</li><li>') + '</li></ul>';
   document.getElementById('buildPre').style.display = 'block';
 
   if (install_dir && install_dir !== '/usr/local') {
-    install_dir = '../tdlib';
+    install_dir = '../tdlight';
     if (target === 'JNI' || target === 'C++/CX') {
       install_dir = '../../' + install_dir;
     }
@@ -926,9 +926,9 @@ function onOptionsChanged() {
       commands.push('exit');
     }
   }
-  commands.push('git clone https://github.com/tdlib/td.git');
+  commands.push('git clone https://github.com/tdlight-team/tdlight.git');
 
-  commands.push('cd td');
+  commands.push('cd tdlight');
   // commands.push('git checkout v1.8.0');
 
   if (use_vcpkg) {
