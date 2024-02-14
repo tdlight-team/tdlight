@@ -437,8 +437,17 @@ class MultiImplPool {
 #if TD_OPENBSD
       max_client_threads = td::min(max_client_threads, 4u);
 #endif
+      // Start TDLight - increment this to 128, otherwise the memory will not be freed when a session is closed
+      max_client_threads = 128;
+      // End TDLight - increment this to 128, otherwise the memory will not be freed when a session is closed
       impls_.resize(max_client_threads);
+      // Start TDLight - disable check
+      # if false
+      // End TDLight - disable check
       CHECK(impls_.size() * (1 + MultiImpl::ADDITIONAL_THREAD_COUNT + 1 /* IOCP */) < 128);
+      // Start TDLight - disable check
+      # endif
+      // End TDLight - disable check
 
       net_query_stats_ = std::make_shared<NetQueryStats>();
     }
