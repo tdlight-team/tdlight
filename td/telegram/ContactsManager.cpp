@@ -17077,10 +17077,6 @@ void ContactsManager::memory_stats(vector<string> &output) {
   output.push_back(",");
   output.push_back("\"secret_chats_with_user_\":"); output.push_back(std::to_string(secret_chats_with_user_.size()));
   output.push_back(",");
-  output.push_back("\"invite_link_infos_\":"); output.push_back(std::to_string(invite_link_infos_.size()));
-  output.push_back(",");
-  output.push_back("\"dialog_access_by_invite_link_\":"); output.push_back(std::to_string(dialog_access_by_invite_link_.size()));
-  output.push_back(",");
   output.push_back("\"load_user_from_database_queries_\":"); output.push_back(std::to_string(load_user_from_database_queries_.size()));
   output.push_back(",");
   output.push_back("\"loaded_from_database_users_\":"); output.push_back(std::to_string(loaded_from_database_users_.size()));
@@ -17102,8 +17098,6 @@ void ContactsManager::memory_stats(vector<string> &output) {
   output.push_back("\"load_secret_chat_from_database_queries_\":"); output.push_back(std::to_string(load_secret_chat_from_database_queries_.size()));
   output.push_back(",");
   output.push_back("\"loaded_from_database_secret_chats_\":"); output.push_back(std::to_string(loaded_from_database_secret_chats_.size()));
-  output.push_back(",");
-  output.push_back("\"dialog_administrators_\":"); output.push_back(std::to_string(dialog_administrators_.size()));
   output.push_back(",");
   output.push_back("\"uploaded_profile_photos_\":"); output.push_back(std::to_string(uploaded_profile_photos_.size()));
   output.push_back(",");

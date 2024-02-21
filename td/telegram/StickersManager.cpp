@@ -10150,8 +10150,6 @@ void StickersManager::get_current_state(vector<td_api::object_ptr<td_api::Update
 }
 
 void StickersManager::memory_stats(vector<string> &output) {
-  output.push_back("\"found_sticker_sets_\":"); output.push_back(std::to_string(found_sticker_sets_.size()));
-  output.push_back(",");
   output.push_back("\"archived_sticker_set_ids_\":"); output.push_back(std::to_string(archived_sticker_set_ids_->size()));
   output.push_back(",");
   output.push_back("\"attached_sticker_sets_\":"); output.push_back(std::to_string(attached_sticker_sets_.size()));
