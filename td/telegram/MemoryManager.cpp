@@ -6,44 +6,19 @@
 //
 #include "td/telegram/MemoryManager.h"
 
-#include "td/telegram/secret_api.h"
 #include "td/telegram/td_api.h"
-#include "td/telegram/telegram_api.h"
 
 #include "td/telegram/AccessRights.h"
-#include "td/telegram/DialogId.h"
 #include "td/telegram/Document.h"
 #include "td/telegram/files/FileLocation.h"
-#include "td/telegram/files/FileType.h"
-#include "td/telegram/Global.h"
-#include "td/telegram/logevent/LogEvent.h"
-#include "td/telegram/misc.h"
-#include "td/telegram/net/DcId.h"
-#include "td/telegram/net/MtprotoHeader.h"
 #include "td/telegram/Td.h"
-#include "td/telegram/TdDb.h"
 
-#include "td/actor/MultiPromise.h"
 #include "td/actor/PromiseFuture.h"
-#include "td/actor/SleepActor.h"
 
 #include "td/db/SqliteKeyValue.h"
 #include "td/db/SqliteKeyValueAsync.h"
 
-#include "td/utils/format.h"
-#include "td/utils/logging.h"
-#include "td/utils/misc.h"
-#include "td/utils/PathView.h"
-#include "td/utils/Random.h"
-#include "td/utils/Slice.h"
-#include "td/utils/Time.h"
-#include "td/utils/tl_helpers.h"
-#include "td/utils/utf8.h"
-
 #include <algorithm>
-#include <limits>
-#include <type_traits>
-#include <unordered_set>
 #include <numeric>
 
 #include "td/telegram/CallbackQueriesManager.h"
