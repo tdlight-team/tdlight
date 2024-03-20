@@ -42,6 +42,7 @@ class Usernames;
 
 class DialogManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   DialogManager(Td *td, ActorShared<> parent);
   DialogManager(const DialogManager &) = delete;
   DialogManager &operator=(const DialogManager &) = delete;

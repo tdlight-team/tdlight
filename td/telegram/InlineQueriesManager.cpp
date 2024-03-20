@@ -2221,13 +2221,13 @@ void InlineQueriesManager::remove_recent_inline_bot(UserId bot_user_id, Promise<
 }
 
 void InlineQueriesManager::memory_stats(vector<string> &output) {
-  output.push_back("\"recently_used_bot_user_ids_\":"); output.push_back(std::to_string(recently_used_bot_user_ids_.size()));
-  output.push_back(",");
-  output.push_back("\"inline_query_results_\":"); output.push_back(std::to_string(inline_query_results_.size()));
-  output.push_back(",");
-  output.push_back("\"inline_message_contents_\":"); output.push_back(std::to_string(inline_message_contents_.size()));
-  output.push_back(",");
-  output.push_back("\"query_id_to_bot_user_id_\":"); output.push_back(std::to_string(query_id_to_bot_user_id_.size()));
+  output.emplace_back("\"recently_used_bot_user_ids_\":"); output.emplace_back(std::to_string(this->recently_used_bot_user_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"inline_query_results_\":"); output.emplace_back(std::to_string(this->inline_query_results_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"inline_message_contents_\":"); output.emplace_back(std::to_string(this->inline_message_contents_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"query_id_to_bot_user_id_\":"); output.emplace_back(std::to_string(this->query_id_to_bot_user_id_.size()));
 }
 
 }  // namespace td

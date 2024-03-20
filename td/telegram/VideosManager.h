@@ -23,14 +23,13 @@ class Td;
 
 class VideosManager {
  public:
+  void memory_stats(vector<string> &output);
   explicit VideosManager(Td *td);
   VideosManager(const VideosManager &) = delete;
   VideosManager &operator=(const VideosManager &) = delete;
   VideosManager(VideosManager &&) = delete;
   VideosManager &operator=(VideosManager &&) = delete;
   ~VideosManager();
-
-  void memory_stats(vector<string> &output);
 
   int32 get_video_duration(FileId file_id) const;
 

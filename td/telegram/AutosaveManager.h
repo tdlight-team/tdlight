@@ -23,6 +23,7 @@ class Td;
 
 class AutosaveManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   AutosaveManager(Td *td, ActorShared<> parent);
 
   void reload_autosave_settings();

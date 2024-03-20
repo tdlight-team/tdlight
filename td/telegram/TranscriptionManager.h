@@ -32,6 +32,7 @@ class Td;
 
 class TranscriptionManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   TranscriptionManager(Td *td, ActorShared<> parent);
   TranscriptionManager(const TranscriptionManager &) = delete;
   TranscriptionManager &operator=(const TranscriptionManager &) = delete;

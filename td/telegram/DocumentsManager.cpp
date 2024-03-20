@@ -757,9 +757,6 @@ void DocumentsManager::merge_documents(FileId new_id, FileId old_id) {
   LOG_STATUS(td_->file_manager_->merge(new_id, old_id));
 }
 
-void DocumentsManager::memory_stats(vector<string> &output) {
-  output.push_back("\"documents_\":"); output.push_back(std::to_string(documents_.calc_size()));
-}
 
 string DocumentsManager::get_document_search_text(FileId file_id) const {
   auto document = get_document(file_id);
@@ -780,6 +777,10 @@ string DocumentsManager::get_document_search_text(FileId file_id) const {
     return document->file_name;
   }
   return sb.as_cslice().str();
+}
+
+void DocumentsManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"documents_\":"); output.emplace_back(std::to_string(this->documents_.calc_size()));
 }
 
 }  // namespace td

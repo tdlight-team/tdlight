@@ -446,4 +446,12 @@ void PeopleNearbyManager::update_is_location_visible() {
   td_->option_manager_->set_option_boolean("is_location_visible", expire_date != 0);
 }
 
+void PeopleNearbyManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"users_nearby_\":"); output.emplace_back(std::to_string(this->users_nearby_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"channels_nearby_\":"); output.emplace_back(std::to_string(this->channels_nearby_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"all_users_nearby_\":"); output.emplace_back(std::to_string(this->all_users_nearby_.size()));
+}
+
 }  // namespace td

@@ -193,6 +193,7 @@ class StoryManager final : public Actor {
   };
 
  public:
+  void memory_stats(vector<string> &output);
   StoryManager(Td *td, ActorShared<> parent);
   StoryManager(const StoryManager &) = delete;
   StoryManager &operator=(const StoryManager &) = delete;

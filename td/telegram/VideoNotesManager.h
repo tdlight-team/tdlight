@@ -26,14 +26,13 @@ class Td;
 
 class VideoNotesManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   VideoNotesManager(Td *td, ActorShared<> parent);
   VideoNotesManager(const VideoNotesManager &) = delete;
   VideoNotesManager &operator=(const VideoNotesManager &) = delete;
   VideoNotesManager(VideoNotesManager &&) = delete;
   VideoNotesManager &operator=(VideoNotesManager &&) = delete;
   ~VideoNotesManager() final;
-
-  void memory_stats(vector<string> &output);
 
   int32 get_video_note_duration(FileId file_id) const;
 

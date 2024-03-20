@@ -1049,4 +1049,8 @@ const SavedMessagesManager::TopicDate SavedMessagesManager::MIN_TOPIC_DATE{std::
                                                                            SavedMessagesTopicId()};
 const SavedMessagesManager::TopicDate SavedMessagesManager::MAX_TOPIC_DATE{0, SavedMessagesTopicId()};
 
+void SavedMessagesManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"saved_messages_topics_\":"); output.emplace_back(std::to_string(this->saved_messages_topics_.size()));
+}
+
 }  // namespace td

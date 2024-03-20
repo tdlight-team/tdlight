@@ -1970,15 +1970,21 @@ void PollManager::on_binlog_events(vector<BinlogEvent> &&events) {
 }
 
 void PollManager::memory_stats(vector<string> &output) {
-  output.push_back("\"polls_\":"); output.push_back(std::to_string(polls_.calc_size()));
-  output.push_back(",");
-  output.push_back("\"pending_answers_\":"); output.push_back(std::to_string(pending_answers_.size()));
-  output.push_back(",");
-  output.push_back("\"poll_voters_\":"); output.push_back(std::to_string(poll_voters_.size()));
-  output.push_back(",");
-  output.push_back("\"loaded_from_database_polls_\":"); output.push_back(std::to_string(loaded_from_database_polls_.size()));
-  output.push_back(",");
-  output.push_back("\"being_closed_polls_\":"); output.push_back(std::to_string(being_closed_polls_.size()));
+  output.emplace_back("\"polls_\":"); output.emplace_back(std::to_string(this->polls_.calc_size()));
+  output.emplace_back(",");
+  output.emplace_back("\"server_poll_messages_\":"); output.emplace_back(std::to_string(this->server_poll_messages_.calc_size()));
+  output.emplace_back(",");
+  output.emplace_back("\"other_poll_messages_\":"); output.emplace_back(std::to_string(this->other_poll_messages_.calc_size()));
+  output.emplace_back(",");
+  output.emplace_back("\"reply_poll_counts_\":"); output.emplace_back(std::to_string(this->reply_poll_counts_.calc_size()));
+  output.emplace_back(",");
+  output.emplace_back("\"pending_answers_\":"); output.emplace_back(std::to_string(this->pending_answers_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"poll_voters_\":"); output.emplace_back(std::to_string(this->poll_voters_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"loaded_from_database_polls_\":"); output.emplace_back(std::to_string(this->loaded_from_database_polls_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"being_closed_polls_\":"); output.emplace_back(std::to_string(this->being_closed_polls_.size()));
 }
 
 }  // namespace td

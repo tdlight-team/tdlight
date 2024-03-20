@@ -32,6 +32,7 @@ class Td;
 
 class ForumTopicManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   ForumTopicManager(Td *td, ActorShared<> parent);
   ForumTopicManager(const ForumTopicManager &) = delete;
   ForumTopicManager &operator=(const ForumTopicManager &) = delete;

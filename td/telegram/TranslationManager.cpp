@@ -126,4 +126,7 @@ void TranslationManager::on_get_translated_texts(vector<telegram_api::object_ptr
   promise.set_value(get_formatted_text_object(formatted_text, skip_bot_commands, max_media_timestamp));
 }
 
+void TranslationManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

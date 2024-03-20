@@ -36,9 +36,8 @@ class Game;
 
 class InlineQueriesManager final : public Actor {
  public:
-  InlineQueriesManager(Td *td, ActorShared<> parent);
-
   void memory_stats(vector<string> &output);
+  InlineQueriesManager(Td *td, ActorShared<> parent);
 
   void after_get_difference();
 

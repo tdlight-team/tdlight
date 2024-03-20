@@ -29,6 +29,7 @@ class Td;
 
 class SavedMessagesManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   SavedMessagesManager(Td *td, ActorShared<> parent);
 
   SavedMessagesTopicId get_topic_id(int64 topic_id) const;

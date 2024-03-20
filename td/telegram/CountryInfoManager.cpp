@@ -610,4 +610,8 @@ FlatHashMap<string, unique_ptr<CountryInfoManager::CountryList>> CountryInfoMana
 string CountryInfoManager::fragment_prefixes_str_;
 vector<string> CountryInfoManager::fragment_prefixes_;
 
+void CountryInfoManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"pending_load_country_queries_\":"); output.emplace_back(std::to_string(this->pending_load_country_queries_.size()));
+}
+
 }  // namespace td

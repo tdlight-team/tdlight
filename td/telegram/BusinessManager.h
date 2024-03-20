@@ -24,6 +24,7 @@ class Td;
 
 class BusinessManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   BusinessManager(Td *td, ActorShared<> parent);
 
   void get_business_connected_bot(Promise<td_api::object_ptr<td_api::businessConnectedBot>> &&promise);

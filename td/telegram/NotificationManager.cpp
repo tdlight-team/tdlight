@@ -4371,4 +4371,32 @@ void NotificationManager::on_binlog_events(vector<BinlogEvent> &&events) {
   VLOG(notifications) << "Finish processing binlog events";
 }
 
+void NotificationManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"running_get_chat_difference_\":"); output.emplace_back(std::to_string(this->running_get_chat_difference_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"group_keys_\":"); output.emplace_back(std::to_string(this->group_keys_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"pending_updates_\":"); output.emplace_back(std::to_string(this->pending_updates_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"call_notification_group_ids_\":"); output.emplace_back(std::to_string(this->call_notification_group_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"available_call_notification_group_ids_\":"); output.emplace_back(std::to_string(this->available_call_notification_group_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"dialog_id_to_call_notification_group_id_\":"); output.emplace_back(std::to_string(this->dialog_id_to_call_notification_group_id_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"temporary_notification_log_event_ids_\":"); output.emplace_back(std::to_string(this->temporary_notification_log_event_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"temporary_edit_notification_log_event_ids_\":"); output.emplace_back(std::to_string(this->temporary_edit_notification_log_event_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"temporary_notifications_\":"); output.emplace_back(std::to_string(this->temporary_notifications_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"temporary_notification_object_ids_\":"); output.emplace_back(std::to_string(this->temporary_notification_object_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"push_notification_promises_\":"); output.emplace_back(std::to_string(this->push_notification_promises_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"active_call_notifications_\":"); output.emplace_back(std::to_string(this->active_call_notifications_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"announcement_id_date_\":"); output.emplace_back(std::to_string(this->announcement_id_date_.size()));
+}
+
 }  // namespace td

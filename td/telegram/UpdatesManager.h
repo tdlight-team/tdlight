@@ -95,6 +95,7 @@ class updateSentMessage final : public telegram_api::Update {
 
 class UpdatesManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   UpdatesManager(Td *td, ActorShared<> parent);
 
   void on_get_updates(tl_object_ptr<telegram_api::Updates> &&updates_ptr, Promise<Unit> &&promise);

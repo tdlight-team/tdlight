@@ -25,6 +25,7 @@ class Td;
 
 class DialogActionManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   DialogActionManager(Td *td, ActorShared<> parent);
 
   void on_dialog_action(DialogId dialog_id, MessageId top_thread_message_id, DialogId typing_dialog_id,

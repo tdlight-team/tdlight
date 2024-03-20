@@ -27,6 +27,7 @@ class Td;
 
 class TopDialogManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   TopDialogManager(Td *td, ActorShared<> parent);
 
   void init();

@@ -1793,4 +1793,14 @@ void QuickReplyManager::get_current_state(vector<td_api::object_ptr<td_api::Upda
   }
 }
 
+void QuickReplyManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"deleted_shortcut_ids_\":"); output.emplace_back(std::to_string(this->deleted_shortcut_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"get_shortcut_messages_queries_\":"); output.emplace_back(std::to_string(this->get_shortcut_messages_queries_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"deleted_message_full_ids_\":"); output.emplace_back(std::to_string(this->deleted_message_full_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"message_full_id_to_file_source_id_\":"); output.emplace_back(std::to_string(this->message_full_id_to_file_source_id_.size()));
+}
+
 }  // namespace td

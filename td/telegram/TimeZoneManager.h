@@ -21,6 +21,7 @@ class Td;
 
 class TimeZoneManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   TimeZoneManager(Td *td, ActorShared<> parent);
   TimeZoneManager(const TimeZoneManager &) = delete;
   TimeZoneManager &operator=(const TimeZoneManager &) = delete;

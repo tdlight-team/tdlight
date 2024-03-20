@@ -24,6 +24,7 @@ class Td;
 
 class ThemeManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   ThemeManager(Td *td, ActorShared<> parent);
 
   void init();

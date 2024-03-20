@@ -20,6 +20,7 @@ class Td;
 
 class BotInfoManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   BotInfoManager(Td *td, ActorShared<> parent);
 
   void set_default_group_administrator_rights(AdministratorRights administrator_rights, Promise<Unit> &&promise);

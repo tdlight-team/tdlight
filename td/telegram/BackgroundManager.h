@@ -33,9 +33,8 @@ class Td;
 
 class BackgroundManager final : public Actor {
  public:
-  BackgroundManager(Td *td, ActorShared<> parent);
-
   void memory_stats(vector<string> &output);
+  BackgroundManager(Td *td, ActorShared<> parent);
 
   void get_backgrounds(bool for_dark_theme, Promise<td_api::object_ptr<td_api::backgrounds>> &&promise);
 

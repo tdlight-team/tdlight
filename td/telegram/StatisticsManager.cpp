@@ -738,4 +738,7 @@ void StatisticsManager::get_channel_differences_if_needed(
       source);
 }
 
+void StatisticsManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

@@ -74,6 +74,7 @@ class Td;
 
 class ContactsManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   ContactsManager(Td *td, ActorShared<> parent);
   ContactsManager(const ContactsManager &) = delete;
   ContactsManager &operator=(const ContactsManager &) = delete;
@@ -82,8 +83,6 @@ class ContactsManager final : public Actor {
   ~ContactsManager() final;
 
   static UserId load_my_id();
-
-  void memory_stats(vector<string> &output);
 
   static UserId get_user_id(const tl_object_ptr<telegram_api::User> &user);
   static ChatId get_chat_id(const tl_object_ptr<telegram_api::Chat> &chat);

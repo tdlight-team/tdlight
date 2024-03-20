@@ -1062,4 +1062,8 @@ void OptionManager::get_current_state(vector<td_api::object_ptr<td_api::Update>>
   }
 }
 
+void OptionManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"pending_get_options_\":"); output.emplace_back(std::to_string(this->pending_get_options_.size()));
+}
+
 }  // namespace td

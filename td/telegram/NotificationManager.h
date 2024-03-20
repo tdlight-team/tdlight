@@ -48,6 +48,7 @@ class Td;
 
 class NotificationManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   static constexpr int32 MIN_NOTIFICATION_GROUP_COUNT_MAX = 0;
   static constexpr int32 MAX_NOTIFICATION_GROUP_COUNT_MAX = 25;
   static constexpr int32 MIN_NOTIFICATION_GROUP_SIZE_MAX = 1;

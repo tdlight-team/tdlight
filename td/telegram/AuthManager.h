@@ -26,6 +26,7 @@ namespace td {
 
 class AuthManager final : public NetActor {
  public:
+  void memory_stats(vector<string> &output);
   AuthManager(int32 api_id, const string &api_hash, ActorShared<> parent);
 
   bool is_bot() const {

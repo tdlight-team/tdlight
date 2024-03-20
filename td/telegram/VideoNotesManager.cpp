@@ -265,7 +265,7 @@ tl_object_ptr<telegram_api::InputMedia> VideoNotesManager::get_input_media(
 }
 
 void VideoNotesManager::memory_stats(vector<string> &output) {
-  output.push_back("\"video_notes_\":"); output.push_back(std::to_string(video_notes_.calc_size()));
+  output.emplace_back("\"video_notes_\":"); output.emplace_back(std::to_string(this->video_notes_.calc_size()));
 }
 
 }  // namespace td

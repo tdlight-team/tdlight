@@ -118,6 +118,7 @@ class Usernames;
 
 class MessagesManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   static constexpr int32 SEND_MESSAGE_FLAG_DISABLE_WEB_PAGE_PREVIEW = 1 << 1;
   static constexpr int32 SEND_MESSAGE_FLAG_HAS_REPLY_MARKUP = 1 << 2;
   static constexpr int32 SEND_MESSAGE_FLAG_HAS_ENTITIES = 1 << 3;
@@ -143,8 +144,6 @@ class MessagesManager final : public Actor {
 
   static bool is_invalid_poll_message(const telegram_api::Message *message);
 
-  void memory_stats(vector<string> &output);
-  
   static int32 get_message_date(const tl_object_ptr<telegram_api::Message> &message_ptr);
 
   void on_get_empty_messages(DialogId dialog_id, const vector<MessageId> &empty_message_ids);

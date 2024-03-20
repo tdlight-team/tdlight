@@ -35,6 +35,7 @@ class Td;
 
 class DialogParticipantManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   DialogParticipantManager(Td *td, ActorShared<> parent);
   DialogParticipantManager(const DialogParticipantManager &) = delete;
   DialogParticipantManager &operator=(const DialogParticipantManager &) = delete;

@@ -552,4 +552,8 @@ void AutosaveManager::get_current_state(vector<td_api::object_ptr<td_api::Update
   }
 }
 
+void AutosaveManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"load_settings_queries_\":"); output.emplace_back(std::to_string(this->load_settings_queries_.size()));
+}
+
 }  // namespace td

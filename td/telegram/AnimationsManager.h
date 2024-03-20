@@ -28,14 +28,13 @@ class Td;
 
 class AnimationsManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   AnimationsManager(Td *td, ActorShared<> parent);
   AnimationsManager(const AnimationsManager &) = delete;
   AnimationsManager &operator=(const AnimationsManager &) = delete;
   AnimationsManager(AnimationsManager &&) = delete;
   AnimationsManager &operator=(AnimationsManager &&) = delete;
   ~AnimationsManager() final;
-
-  void memory_stats(vector<string> &output);
 
   int32 get_animation_duration(FileId file_id) const;
 

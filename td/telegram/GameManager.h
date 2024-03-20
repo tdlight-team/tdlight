@@ -22,6 +22,7 @@ class Td;
 
 class GameManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   GameManager(Td *td, ActorShared<> parent);
   GameManager(const GameManager &) = delete;
   GameManager &operator=(const GameManager &) = delete;

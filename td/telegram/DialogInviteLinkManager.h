@@ -28,6 +28,7 @@ class Td;
 
 class DialogInviteLinkManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   DialogInviteLinkManager(Td *td, ActorShared<> parent);
   DialogInviteLinkManager(const DialogInviteLinkManager &) = delete;
   DialogInviteLinkManager &operator=(const DialogInviteLinkManager &) = delete;

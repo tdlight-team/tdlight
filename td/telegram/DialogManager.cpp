@@ -2161,4 +2161,16 @@ void DialogManager::drop_username(const string &username) {
   }
 }
 
+void DialogManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"being_uploaded_dialog_photos_\":"); output.emplace_back(std::to_string(this->being_uploaded_dialog_photos_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"resolved_usernames_\":"); output.emplace_back(std::to_string(this->resolved_usernames_.calc_size()));
+  output.emplace_back(",");
+  output.emplace_back("\"inaccessible_resolved_usernames_\":"); output.emplace_back(std::to_string(this->inaccessible_resolved_usernames_.calc_size()));
+  output.emplace_back(",");
+  output.emplace_back("\"reload_voice_chat_on_search_usernames_\":"); output.emplace_back(std::to_string(this->reload_voice_chat_on_search_usernames_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"resolve_dialog_username_queries_\":"); output.emplace_back(std::to_string(this->resolve_dialog_username_queries_.size()));
+}
+
 }  // namespace td

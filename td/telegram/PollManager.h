@@ -39,6 +39,7 @@ class Td;
 
 class PollManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   PollManager(Td *td, ActorShared<> parent);
 
   PollManager(const PollManager &) = delete;
@@ -46,8 +47,6 @@ class PollManager final : public Actor {
   PollManager(PollManager &&) = delete;
   PollManager &operator=(PollManager &&) = delete;
   ~PollManager() final;
-
-  void memory_stats(vector<string> &output);
 
   static bool is_local_poll_id(PollId poll_id);
 

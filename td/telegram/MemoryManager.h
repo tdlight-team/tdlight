@@ -56,6 +56,8 @@ class MemoryManager : public Actor {
 
   void tear_down() override;
 
+  void print_managers_memory_stats(vector<string> &output) const;
+
   Td *td_;
   ActorShared<> parent_;
 };

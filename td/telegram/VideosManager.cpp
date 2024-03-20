@@ -335,7 +335,7 @@ string VideosManager::get_video_search_text(FileId file_id) const {
 }
 
 void VideosManager::memory_stats(vector<string> &output) {
-  output.push_back("\"videos_\":"); output.push_back(std::to_string(videos_.calc_size()));
+  output.emplace_back("\"videos_\":"); output.emplace_back(std::to_string(this->videos_.calc_size()));
 }
 
 }  // namespace td

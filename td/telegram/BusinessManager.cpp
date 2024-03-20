@@ -292,4 +292,7 @@ void BusinessManager::set_business_away_message(BusinessAwayMessage &&away_messa
   td_->create_handler<UpdateBusinessAwayMessageQuery>(std::move(promise))->send(std::move(away_message));
 }
 
+void BusinessManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

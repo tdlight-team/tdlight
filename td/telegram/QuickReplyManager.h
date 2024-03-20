@@ -36,6 +36,7 @@ class Td;
 
 class QuickReplyManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   QuickReplyManager(Td *td, ActorShared<> parent);
 
   static Status check_shortcut_name(CSlice name);

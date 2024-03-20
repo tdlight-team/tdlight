@@ -23,6 +23,7 @@ class Td;
 
 class CallbackQueriesManager {
  public:
+  void memory_stats(vector<string> &output);
   explicit CallbackQueriesManager(Td *td);
 
   void answer_callback_query(int64 callback_query_id, const string &text, bool show_alert, const string &url,

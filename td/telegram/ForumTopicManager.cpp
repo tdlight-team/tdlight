@@ -1228,4 +1228,8 @@ void ForumTopicManager::on_topic_message_count_changed(DialogId dialog_id, Messa
   }
 }
 
+void ForumTopicManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"dialog_topics_\":"); output.emplace_back(std::to_string(this->dialog_topics_.calc_size()));
+}
+
 }  // namespace td

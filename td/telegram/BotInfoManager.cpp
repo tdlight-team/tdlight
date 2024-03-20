@@ -442,4 +442,10 @@ void BotInfoManager::get_bot_info_about(UserId bot_user_id, const string &langua
   add_pending_get_query(bot_user_id, language_code, 2, std::move(promise));
 }
 
+void BotInfoManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"pending_set_bot_info_queries_\":"); output.emplace_back(std::to_string(this->pending_set_bot_info_queries_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"pending_get_bot_info_queries_\":"); output.emplace_back(std::to_string(this->pending_get_bot_info_queries_.size()));
+}
+
 }  // namespace td

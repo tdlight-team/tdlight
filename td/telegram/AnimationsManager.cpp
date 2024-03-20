@@ -888,11 +888,15 @@ void AnimationsManager::get_current_state(vector<td_api::object_ptr<td_api::Upda
 }
 
 void AnimationsManager::memory_stats(vector<string> &output) {
-  output.push_back("\"animations_\":"); output.push_back(std::to_string(animations_.calc_size()));
-  output.push_back(",");
-  output.push_back("\"saved_animation_ids_\":"); output.push_back(std::to_string(this->saved_animation_ids_.size()));
-  output.push_back(",");
-  output.push_back("\"saved_animation_file_ids_\":"); output.push_back(std::to_string(this->saved_animation_file_ids_.size()));
+  output.emplace_back("\"animations_\":"); output.emplace_back(std::to_string(this->animations_.calc_size()));
+  output.emplace_back(",");
+  output.emplace_back("\"saved_animation_ids_\":"); output.emplace_back(std::to_string(this->saved_animation_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"saved_animation_file_ids_\":"); output.emplace_back(std::to_string(this->saved_animation_file_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"load_saved_animations_queries_\":"); output.emplace_back(std::to_string(this->load_saved_animations_queries_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"repair_saved_animations_queries_\":"); output.emplace_back(std::to_string(this->repair_saved_animations_queries_.size()));
 }
 
 }  // namespace td

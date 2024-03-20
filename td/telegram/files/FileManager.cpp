@@ -4173,16 +4173,6 @@ void FileManager::hangup() {
   stop();
 }
 
-void FileManager::memory_stats(vector<string> &output) {
-  output.push_back("\"file_id_info_\":"); output.push_back(std::to_string(file_id_info_.size()));
-  output.push_back(",");
-  output.push_back("\"file_nodes_\":"); output.push_back(std::to_string(file_nodes_.size()));
-  output.push_back(",");
-  output.push_back("\"file_hash_to_file_id_\":"); output.push_back(std::to_string(file_hash_to_file_id_.calc_size()));
-  output.push_back(",");
-  output.push_back("\"empty_file_ids_\":"); output.push_back(std::to_string(empty_file_ids_.size()));
-}
-
 void FileManager::tear_down() {
   parent_.reset();
 
@@ -4194,5 +4184,9 @@ void FileManager::tear_down() {
 constexpr int64 FileManager::KEEP_DOWNLOAD_LIMIT;
 constexpr int64 FileManager::KEEP_DOWNLOAD_OFFSET;
 constexpr int64 FileManager::IGNORE_DOWNLOAD_LIMIT;
+
+void FileManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"file_hash_to_file_id_\":"); output.emplace_back(std::to_string(this->file_hash_to_file_id_.calc_size()));
+}
 
 }  // namespace td

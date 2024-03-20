@@ -508,9 +508,7 @@ td_api::object_ptr<td_api::message> FileReferenceManager::get_message_object(Fil
 }
 
 void FileReferenceManager::memory_stats(vector<string> &output) {
-  output.push_back("\"nodes_\":"); output.push_back(std::to_string(nodes_.calc_size()));
-  output.push_back(",");
-  output.push_back("\"file_sources_\":"); output.push_back(std::to_string(file_sources_.size()));
+  output.emplace_back("\"nodes_\":"); output.emplace_back(std::to_string(this->nodes_.calc_size()));
 }
 
 }  // namespace td

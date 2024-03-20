@@ -1344,4 +1344,7 @@ void AccountManager::get_current_state(vector<td_api::object_ptr<td_api::Update>
   }
 }
 
+void AccountManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

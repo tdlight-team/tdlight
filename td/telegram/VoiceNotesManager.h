@@ -23,6 +23,7 @@ class Td;
 
 class VoiceNotesManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   VoiceNotesManager(Td *td, ActorShared<> parent);
   VoiceNotesManager(const VoiceNotesManager &) = delete;
   VoiceNotesManager &operator=(const VoiceNotesManager &) = delete;

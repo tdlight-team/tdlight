@@ -38,6 +38,7 @@ class Td;
 
 class NotificationSettingsManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   NotificationSettingsManager(Td *td, ActorShared<> parent);
   NotificationSettingsManager(const NotificationSettingsManager &) = delete;
   NotificationSettingsManager &operator=(const NotificationSettingsManager &) = delete;
@@ -45,7 +46,7 @@ class NotificationSettingsManager final : public Actor {
   NotificationSettingsManager &operator=(NotificationSettingsManager &&) = delete;
   ~NotificationSettingsManager() final;
 
-  int32 get_scope_mute_until(NotificationSettingsScope scope) const;
+    int32 get_scope_mute_until(NotificationSettingsScope scope) const;
 
   std::pair<bool, bool> get_scope_mute_stories(NotificationSettingsScope scope) const;
 

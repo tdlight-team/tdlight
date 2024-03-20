@@ -579,4 +579,12 @@ void MessageImportManager::on_imported_message_attachments_uploaded(int64 random
   td_->create_handler<StartImportHistoryQuery>(std::move(promise))->send(dialog_id, pending_message_import->import_id);
 }
 
+void MessageImportManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"being_uploaded_imported_messages_\":"); output.emplace_back(std::to_string(this->being_uploaded_imported_messages_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"being_uploaded_imported_message_attachments_\":"); output.emplace_back(std::to_string(this->being_uploaded_imported_message_attachments_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"pending_message_imports_\":"); output.emplace_back(std::to_string(this->pending_message_imports_.size()));
+}
+
 }  // namespace td

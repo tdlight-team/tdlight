@@ -21,6 +21,7 @@ class Td;
 
 class AccountManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   AccountManager(Td *td, ActorShared<> parent);
   AccountManager(const AccountManager &) = delete;
   AccountManager &operator=(const AccountManager &) = delete;

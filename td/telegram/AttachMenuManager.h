@@ -29,6 +29,7 @@ class Td;
 
 class AttachMenuManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   AttachMenuManager(Td *td, ActorShared<> parent);
 
   void init();

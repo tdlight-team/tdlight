@@ -26,6 +26,7 @@ class Td;
 
 class PeopleNearbyManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   PeopleNearbyManager(Td *td, ActorShared<> parent);
 
   void search_dialogs_nearby(const Location &location, Promise<td_api::object_ptr<td_api::chatsNearby>> &&promise);

@@ -25,6 +25,7 @@ class Td;
 
 class PrivacyManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   PrivacyManager(Td *td, ActorShared<> parent);
 
   void get_privacy(tl_object_ptr<td_api::UserPrivacySetting> key,

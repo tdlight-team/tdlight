@@ -24,6 +24,7 @@ class TsSeqKeyValue;
 
 class OptionManager {
  public:
+  void memory_stats(vector<string> &output);
   explicit OptionManager(Td *td);
   OptionManager(const OptionManager &) = delete;
   OptionManager &operator=(const OptionManager &) = delete;

@@ -1184,4 +1184,14 @@ void ReactionManager::get_current_state(vector<td_api::object_ptr<td_api::Update
   }
 }
 
+void ReactionManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"pending_get_emoji_reaction_queries_\":"); output.emplace_back(std::to_string(this->pending_get_emoji_reaction_queries_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"active_reaction_types_\":"); output.emplace_back(std::to_string(this->active_reaction_types_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"topic_tags_\":"); output.emplace_back(std::to_string(this->topic_tags_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"pending_get_all_saved_reaction_tags_queries_\":"); output.emplace_back(std::to_string(this->pending_get_all_saved_reaction_tags_queries_.size()));
+}
+
 }  // namespace td

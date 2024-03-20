@@ -25,6 +25,7 @@ class Td;
 
 class CountryInfoManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   CountryInfoManager(Td *td, ActorShared<> parent);
 
   void get_countries(Promise<td_api::object_ptr<td_api::countries>> &&promise);

@@ -4509,4 +4509,8 @@ void UpdatesManager::on_update(tl_object_ptr<telegram_api::updateDeleteQuickRepl
 
 // unsupported updates
 
+void UpdatesManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"session_infos_\":"); output.emplace_back(std::to_string(this->session_infos_.size()));
+}
+
 }  // namespace td

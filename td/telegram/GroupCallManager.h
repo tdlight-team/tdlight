@@ -32,14 +32,13 @@ class Td;
 
 class GroupCallManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   GroupCallManager(Td *td, ActorShared<> parent);
   GroupCallManager(const GroupCallManager &) = delete;
   GroupCallManager &operator=(const GroupCallManager &) = delete;
   GroupCallManager(GroupCallManager &&) = delete;
   GroupCallManager &operator=(GroupCallManager &&) = delete;
   ~GroupCallManager() final;
-
-  void memory_stats(vector<string> &output);
 
   DialogId get_group_call_participant_id(const td_api::object_ptr<td_api::MessageSender> &message_sender);
 

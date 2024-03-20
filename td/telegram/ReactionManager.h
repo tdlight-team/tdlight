@@ -31,6 +31,7 @@ class Td;
 
 class ReactionManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   ReactionManager(Td *td, ActorShared<> parent);
   ReactionManager(const ReactionManager &) = delete;
   ReactionManager &operator=(const ReactionManager &) = delete;

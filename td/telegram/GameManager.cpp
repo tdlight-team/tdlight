@@ -305,4 +305,7 @@ td_api::object_ptr<td_api::gameHighScores> GameManager::get_game_high_scores_obj
   return result;
 }
 
+void GameManager::memory_stats(vector<string> &output) {
+}
+
 }  // namespace td

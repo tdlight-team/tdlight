@@ -22,14 +22,13 @@ class Td;
 
 class AudiosManager {
  public:
+  void memory_stats(vector<string> &output);
   explicit AudiosManager(Td *td);
   AudiosManager(const AudiosManager &) = delete;
   AudiosManager &operator=(const AudiosManager &) = delete;
   AudiosManager(AudiosManager &&) = delete;
   AudiosManager &operator=(AudiosManager &&) = delete;
   ~AudiosManager();
-
-  void memory_stats(vector<string> &output);
 
   int32 get_audio_duration(FileId file_id) const;
 

@@ -25,6 +25,7 @@ class Td;
 
 class SponsoredMessageManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   SponsoredMessageManager(Td *td, ActorShared<> parent);
   SponsoredMessageManager(const SponsoredMessageManager &) = delete;
   SponsoredMessageManager &operator=(const SponsoredMessageManager &) = delete;

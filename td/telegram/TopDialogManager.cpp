@@ -679,4 +679,8 @@ void TopDialogManager::loop() {
   }
 }
 
+void TopDialogManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"pending_get_top_dialogs_\":"); output.emplace_back(std::to_string(this->pending_get_top_dialogs_.size()));
+}
+
 }  // namespace td

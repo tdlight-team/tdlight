@@ -29,6 +29,7 @@ class Td;
 
 class LinkManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   LinkManager(Td *td, ActorShared<> parent);
 
   LinkManager(const LinkManager &) = delete;

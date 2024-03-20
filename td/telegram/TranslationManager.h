@@ -21,6 +21,7 @@ class Td;
 
 class TranslationManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   TranslationManager(Td *td, ActorShared<> parent);
 
   void translate_text(td_api::object_ptr<td_api::formattedText> &&text, const string &to_language_code,

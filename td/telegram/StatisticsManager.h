@@ -25,6 +25,7 @@ class Td;
 
 class StatisticsManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   StatisticsManager(Td *td, ActorShared<> parent);
 
   void get_channel_statistics(DialogId dialog_id, bool is_dark,

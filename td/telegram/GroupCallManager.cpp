@@ -1006,17 +1006,6 @@ void GroupCallManager::tear_down() {
   parent_.reset();
 }
 
-void GroupCallManager::memory_stats(vector<string> &output) {
-  output.push_back("\"group_call_participants_\":"); output.push_back(std::to_string(group_call_participants_.size()));
-  output.push_back(",");
-  output.push_back("\"group_call_recent_speakers_\":"); output.push_back(std::to_string(group_call_recent_speakers_.size()));
-  output.push_back(",");
-  output.push_back("\"group_calls_\":"); output.push_back(std::to_string(group_calls_.size()));
-  output.push_back(",");
-  output.push_back("\"input_group_call_ids_\":"); output.push_back(std::to_string(input_group_call_ids_.size()));
-  output.push_back(",");
-  output.push_back("\"pending_join_requests_\":"); output.push_back(std::to_string(pending_join_requests_.size()));
-}
 
 void GroupCallManager::on_update_group_call_participant_order_timeout_callback(void *group_call_manager_ptr,
                                                                                int64 group_call_id_int) {
@@ -4913,6 +4902,24 @@ void GroupCallManager::send_update_group_call_participant(InputGroupCallId input
   auto group_call = get_group_call(input_group_call_id);
   CHECK(group_call != nullptr && group_call->is_inited);
   send_update_group_call_participant(group_call->group_call_id, participant, source);
+}
+
+void GroupCallManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"input_group_call_ids_\":"); output.emplace_back(std::to_string(this->input_group_call_ids_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"group_calls_\":"); output.emplace_back(std::to_string(this->group_calls_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"group_call_participants_\":"); output.emplace_back(std::to_string(this->group_call_participants_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"participant_id_to_group_call_id_\":"); output.emplace_back(std::to_string(this->participant_id_to_group_call_id_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"group_call_recent_speakers_\":"); output.emplace_back(std::to_string(this->group_call_recent_speakers_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"load_group_call_queries_\":"); output.emplace_back(std::to_string(this->load_group_call_queries_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"pending_join_requests_\":"); output.emplace_back(std::to_string(this->pending_join_requests_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"pending_join_presentation_requests_\":"); output.emplace_back(std::to_string(this->pending_join_presentation_requests_.size()));
 }
 
 }  // namespace td

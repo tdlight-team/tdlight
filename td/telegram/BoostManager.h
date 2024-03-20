@@ -27,6 +27,7 @@ class Td;
 
 class BoostManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   BoostManager(Td *td, ActorShared<> parent);
 
   td_api::object_ptr<td_api::chatBoostLevelFeatures> get_chat_boost_level_features_object(bool for_megagroup,

@@ -27,6 +27,7 @@ class Td;
 
 class MessageImportManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   MessageImportManager(Td *td, ActorShared<> parent);
 
   void get_message_file_type(const string &message_file_head,

@@ -24,6 +24,7 @@ class Td;
 
 class CommonDialogManager final : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   CommonDialogManager(Td *td, ActorShared<> parent);
   CommonDialogManager(const CommonDialogManager &) = delete;
   CommonDialogManager &operator=(const CommonDialogManager &) = delete;

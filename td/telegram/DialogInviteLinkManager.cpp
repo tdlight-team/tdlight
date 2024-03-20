@@ -1097,4 +1097,10 @@ void DialogInviteLinkManager::delete_all_revoked_dialog_invite_links(DialogId di
       ->send(dialog_id, std::move(input_user));
 }
 
+void DialogInviteLinkManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"invite_link_infos_\":"); output.emplace_back(std::to_string(this->invite_link_infos_.size()));
+  output.emplace_back(",");
+  output.emplace_back("\"dialog_access_by_invite_link_\":"); output.emplace_back(std::to_string(this->dialog_access_by_invite_link_.size()));
+}
+
 }  // namespace td

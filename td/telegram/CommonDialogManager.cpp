@@ -221,4 +221,8 @@ void CommonDialogManager::on_get_common_dialogs(UserId user_id, int64 offset_cha
   common_dialogs.total_count = total_count;
 }
 
+void CommonDialogManager::memory_stats(vector<string> &output) {
+  output.emplace_back("\"found_common_dialogs_\":"); output.emplace_back(std::to_string(this->found_common_dialogs_.size()));
+}
+
 }  // namespace td

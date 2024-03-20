@@ -20,6 +20,7 @@ namespace td {
 
 class DownloadManager : public Actor {
  public:
+  void memory_stats(vector<string> &output);
   struct Counters {
     int64 total_size{};
     int32 total_count{};
