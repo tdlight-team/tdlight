@@ -3232,6 +3232,7 @@ void Td::dec_actor_refcnt() {
       reset_manager(sponsored_message_manager_, "SponsoredMessageManager");
       reset_manager(statistics_manager_, "StatisticsManager");
       reset_manager(stickers_manager_, "StickersManager");
+      reset_manager(memory_manager_, "MemoryManager");
       reset_manager(story_manager_, "StoryManager");
       reset_manager(theme_manager_, "ThemeManager");
       reset_manager(top_dialog_manager_, "TopDialogManager");
@@ -3412,6 +3413,7 @@ void Td::clear() {
   reset_actor(ActorOwn<Actor>(std::move(sponsored_message_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(statistics_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(stickers_manager_actor_)));
+  reset_actor(ActorOwn<Actor>(std::move(memory_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(story_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(theme_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(top_dialog_manager_actor_)));
