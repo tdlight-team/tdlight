@@ -15,7 +15,6 @@
 #include "td/utils/common.h"
 #include "td/utils/tl_helpers.h"
 
-
 namespace td {
 
 template <class StorerT>
