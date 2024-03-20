@@ -13,3 +13,5 @@ td.binlog
 tg_cli.log
 
 tg_cli.log.old
+
+.attach_pid*
