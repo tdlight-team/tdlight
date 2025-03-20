@@ -6,6 +6,7 @@
 //
 #pragma once
 
+#include "base64.h"
 #include "td/utils/common.h"
 #include "td/utils/SharedSlice.h"
 #include "td/utils/Slice.h"
@@ -15,15 +16,21 @@
 
 namespace td {
 
-class TlStorerToString {
+class TlStorerToJsonString {
   decltype(StackAllocator::alloc(0)) buffer_ = StackAllocator::alloc(1 << 14);
   StringBuilder sb_ = StringBuilder(buffer_.as_slice(), true);
   size_t shift_ = 0;
+  bool has_previously_appended_field_ = false;
 
   void store_field_begin(Slice name) {
     sb_.append_char(shift_, ' ');
     if (!name.empty()) {
-      sb_ << name << " = ";
+      if (!has_previously_appended_field_) {
+        has_previously_appended_field_ = true;
+      } else {
+        sb_.push_back(',');
+      }
+      sb_ << "\"" << name << "\": ";
     }
   }
 
@@ -32,24 +39,15 @@ class TlStorerToString {
   }
 
   void store_binary(Slice data) {
-    static const char *hex = "0123456789ABCDEF";
-
-    sb_ << "{ ";
-    for (auto c : data) {
-      unsigned char byte = c;
-      sb_.push_back(hex[byte >> 4]);
-      sb_.push_back(hex[byte & 15]);
-      sb_.push_back(' ');
-    }
-    sb_.push_back('}');
+    sb_ << "\"" << base64_encode(data) << "\"";
   }
 
  public:
-  TlStorerToString() = default;
-  TlStorerToString(const TlStorerToString &) = delete;
-  TlStorerToString &operator=(const TlStorerToString &) = delete;
-  TlStorerToString(TlStorerToString &&) = delete;
-  TlStorerToString &operator=(TlStorerToString &&) = delete;
+  TlStorerToJsonString() = default;
+  TlStorerToJsonString(const TlStorerToJsonString &) = delete;
+  TlStorerToJsonString &operator=(const TlStorerToJsonString &) = delete;
+  TlStorerToJsonString(TlStorerToJsonString &&) = delete;
+  TlStorerToJsonString &operator=(TlStorerToJsonString &&) = delete;
 
   void store_field(Slice name, const string &value) {
     store_field_begin(name);
@@ -61,7 +59,7 @@ class TlStorerToString {
 
   void store_field(Slice name, const SecureString &value) {
     store_field_begin(name);
-    sb_ << "<secret>";
+    sb_ << "\"<secret>\"";
     store_field_end();
   }
 
@@ -74,27 +72,14 @@ class TlStorerToString {
 
   void store_bytes_field(Slice name, const SecureString &value) {
     store_field_begin(name);
-    sb_ << "<secret>";
+    sb_ << "\"<secret>\"";
     store_field_end();
   }
 
   template <class BytesT>
   void store_bytes_field(Slice name, const BytesT &value) {
-    static const char *hex = "0123456789ABCDEF";
-
     store_field_begin(name);
-    sb_ << "bytes [" << value.size() << "] { ";
-    size_t len = min(static_cast<size_t>(64), value.size());
-    for (size_t i = 0; i < len; i++) {
-      int b = value[static_cast<int>(i)] & 0xff;
-      sb_.push_back(hex[b >> 4]);
-      sb_.push_back(hex[b & 15]);
-      sb_.push_back(' ');
-    }
-    if (len < value.size()) {
-      sb_ << "...";
-    }
-    sb_.push_back('}');
+    store_binary(as_slice(value));
     store_field_end();
   }
 
@@ -121,26 +106,30 @@ class TlStorerToString {
 
   void store_vector_begin(Slice field_name, size_t vector_size) {
     store_field_begin(field_name);
-    sb_ << "vector[" << vector_size << "] {\n";
+    sb_ << "[\n";
     shift_ += 2;
   }
 
   void store_vector_end() {
     CHECK(shift_ >= 2);
     shift_ -= 2;
+    has_previously_appended_field_ = true;
     sb_.append_char(shift_, ' ');
-    sb_ << "}\n";
+    sb_ << "]\n";
   }
 
   void store_class_begin(const char *field_name, Slice class_name) {
     store_field_begin(Slice(field_name));
-    sb_ << class_name << " {\n";
+    sb_ << "{\n";
     shift_ += 2;
+    store_field("@type", class_name);
+    has_previously_appended_field_ = false;
   }
 
   void store_class_end() {
     CHECK(shift_ >= 2);
     shift_ -= 2;
+    has_previously_appended_field_ = true;
     sb_.append_char(shift_, ' ');
     sb_ << "}\n";
   }

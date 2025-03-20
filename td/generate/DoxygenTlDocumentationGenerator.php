@@ -130,6 +130,7 @@ class DoxygenTlDocumentationGenerator extends TlDocumentationGenerator
             strpos($tline, 'result += ') === 0 || strpos($tline, 'result = ') || strpos($tline, ' : values') ||
             strpos($line, 'JNIEnv') || strpos($line, 'jfieldID') || $tline === 'virtual ~Object() {' ||
             $tline === 'virtual void store(TlStorerToString &s, const char *field_name) const = 0;' ||
+            $tline === 'virtual void store(TlStorerToJsonString &s, const char *field_name) const = 0;' ||
             $tline === 'const char *&get_package_name_ref();';
     }
 
@@ -303,12 +304,32 @@ EOT
 EOT
 );
 
+        $this->addDocumentation('std::string to_json_string(const BaseObject &value);', <<<EOT
+/**
+ * Returns a json string representation of a TDLib API object.
+ * \\param[in] value The object.
+ * \\return Object json string representation.
+ */
+EOT
+);
+
+
         $this->addDocumentation('std::string to_string(const object_ptr<T> &value) {', <<<EOT
 /**
  * Returns a string representation of a TDLib API object.
  * \\tparam T Object type, auto-deduced.
  * \\param[in] value The object.
  * \\return Object string representation.
+ */
+EOT
+);
+
+        $this->addDocumentation('std::string to_json_string(const object_ptr<T> &value) {', <<<EOT
+/**
+ * Returns a json string representation of a TDLib API object.
+ * \\tparam T Object type, auto-deduced.
+ * \\param[in] value The object.
+ * \\return Object json string representation.
  */
 EOT
 );
@@ -323,10 +344,29 @@ EOT
 EOT
 );
 
+        $this->addDocumentation('std::string to_json_string(const std::vector<object_ptr<T>> &values) {', <<<EOT
+/**
+ * Returns a json string representation of a list of TDLib API objects.
+ * \\tparam T Object type, auto-deduced.
+ * \\param[in] values The objects.
+ * \\return Objects json string representation.
+ */
+EOT
+);
+
         $this->addDocumentation('  void store(TlStorerToString &s, const char *field_name) const final;', <<<EOT
   /**
    * Helper function for to_string method. Appends string representation of the object to the storer.
    * \\param[in] s Storer to which object string representation will be appended.
+   * \\param[in] field_name Object field_name if applicable.
+   */
+EOT
+);
+
+        $this->addDocumentation('  void store(TlStorerToJsonString &s, const char *field_name) const final;', <<<EOT
+  /**
+   * Helper function for to_json_string method. Appends json string representation of the object to the storer.
+   * \\param[in] s Storer to which object json string representation will be appended.
    * \\param[in] field_name Object field_name if applicable.
    */
 EOT

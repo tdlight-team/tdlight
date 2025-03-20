@@ -25,6 +25,8 @@ class TlStorerUnsafe;
 
 class TlStorerToString;
 
+class TlStorerToJsonString;
+
 /**
  * This class is a base class for all TDLib TL-objects.
  */
@@ -55,6 +57,13 @@ class TlObject {
    * \param[in] field_name Object field_name if applicable.
    */
   virtual void store(TlStorerToString &s, const char *field_name) const = 0;
+
+  /**
+   * Helper function for the to_json_string method. Appends a json string representation of the object to the storer.
+   * \param[in] s Storer to which the object string representation will be appended.
+   * \param[in] field_name Object field_name if applicable.
+   */
+  virtual void store(TlStorerToJsonString &s, const char *field_name) const = 0;
 
   /**
    * Default constructor.

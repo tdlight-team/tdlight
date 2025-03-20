@@ -27,6 +27,7 @@ std::string TD_TL_writer_cpp::gen_output_begin(const std::string &additional_imp
          "#include \"td/utils/tl_parsers.h\"\n"
          "#include \"td/utils/tl_storers.h\"\n"
          "#include \"td/utils/TlStorerToString.h\"\n\n" +
+         "#include \"td/utils/TlStorerToJsonString.h\"\n\n" +
          additional_imports +
          "namespace td {\n"
          "namespace " +
@@ -36,6 +37,12 @@ std::string TD_TL_writer_cpp::gen_output_begin(const std::string &additional_imp
 std::string TD_TL_writer_cpp::gen_output_begin_once() const {
   return "std::string to_string(const BaseObject &value) {\n"
          "  TlStorerToString storer;\n"
+         "  value.store(storer, \"\");\n"
+         "  return storer.move_as_string();\n"
+         "}\n"
+         "\n"
+         "std::string to_json_string(const BaseObject &value) {\n"
+         "  TlStorerToJsonString storer;\n"
          "  value.store(storer, \"\");\n"
          "  return storer.move_as_string();\n"
          "}\n";
@@ -330,7 +337,7 @@ std::string TD_TL_writer_cpp::gen_vector_store(const std::string &field_name, co
   std::string num = !field_name.empty() && field_name[0] == '_' ? "2" : "";
   return "{ s.store_vector_begin(\"" + get_pretty_field_name(field_name) + "\", " + field_name +
          ".size()); for (const auto &_value" + num + " : " + field_name + ") { " +
-         gen_type_store("_value" + num, t, vars, storer_type) + " } s.store_class_end(); }";
+         gen_type_store("_value" + num, t, vars, storer_type) + " } s.store_vector_end(); }";
 }
 
 std::string TD_TL_writer_cpp::gen_store_class_name(const tl::tl_tree_type *tree_type) const {

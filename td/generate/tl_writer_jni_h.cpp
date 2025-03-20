@@ -40,6 +40,7 @@ std::vector<std::string> TD_TL_writer_jni_h::get_storers() const {
   std::vector<std::string> storers;
   storers.push_back("JNIEnv *env, jobject");
   storers.push_back("TlStorerToString");
+  storers.push_back("TlStorerToJsonString");
   return storers;
 }
 
@@ -72,6 +73,7 @@ std::string TD_TL_writer_jni_h::gen_output_begin(const std::string &additional_i
          ext_include_str + "\n" + additional_imports +
 
          "namespace td {\n" + forward_declaration("TlStorerToString") +
+         "\n" + forward_declaration("TlStorerToJsonString") +
          "\n"
          "namespace " +
          tl_name + " {\n\n";
@@ -103,6 +105,7 @@ std::string TD_TL_writer_jni_h::gen_class_begin(const std::string &class_name, c
            "  virtual void store(JNIEnv *env, jobject &s) const {\n"
            "  }\n\n"
            "  virtual void store(TlStorerToString &s, const char *field_name) const = 0;\n\n"
+           "  virtual void store(TlStorerToJsonString &s, const char *field_name) const = 0;\n\n"
            "  static jclass Class;\n";
   }
   return TD_TL_writer_h::gen_class_begin(class_name, base_class_name, is_proxy, result) + "  static jclass Class;\n";

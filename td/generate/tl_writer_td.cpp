@@ -68,12 +68,12 @@ bool TD_TL_writer::is_full_constructor_generated(const tl::tl_combinator *t, boo
 }
 
 int TD_TL_writer::get_storer_type(const tl::tl_combinator *t, const std::string &storer_name) const {
-  return storer_name == "TlStorerToString";
+  return storer_name == "TlStorerToString" || storer_name == "TlStorerToJsonString";
 }
 
 tl::TL_writer::Mode TD_TL_writer::get_parser_mode(int type) const {
   if (tl_name == "td_api") {
-#ifndef TD_ENABLE_JNI  // we need to parse all types in order to implement toString
+#ifndef TD_ENABLE_JNI  // we need to parse all types in order to implement toString and toJsonString
     return Server;
 #endif
   }
@@ -114,6 +114,7 @@ std::vector<std::string> TD_TL_writer::get_storers() const {
     storers.push_back("TlStorerUnsafe");
   }
   storers.push_back("TlStorerToString");
+  storers.push_back("TlStorerToJsonString");
   return storers;
 }
 

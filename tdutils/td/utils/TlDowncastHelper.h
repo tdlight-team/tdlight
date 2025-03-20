@@ -8,6 +8,7 @@
 
 #include "td/utils/common.h"
 #include "td/utils/TlStorerToString.h"
+#include "td/utils/TlStorerToJsonString.h"
 
 namespace td {
 
@@ -20,6 +21,8 @@ class TlDowncastHelper final : public T {
     return constructor_;
   }
   void store(TlStorerToString &s, const char *field_name) const final {
+  }
+  void store(TlStorerToJsonString &s, const char *field_name) const final {
   }
 
  private:

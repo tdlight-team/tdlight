@@ -46,6 +46,7 @@ std::vector<std::string> TD_TL_writer_jni_cpp::get_storers() const {
   std::vector<std::string> storers;
   storers.push_back("JNIEnv *env, jobject");
   storers.push_back("TlStorerToString");
+  storers.push_back("TlStorerToJsonString");
   return storers;
 }
 

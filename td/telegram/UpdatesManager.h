@@ -27,6 +27,7 @@
 #include "td/utils/Status.h"
 #include "td/utils/tl_storers.h"
 #include "td/utils/TlStorerToString.h"
+#include "td/utils/TlStorerToJsonString.h"
 
 #include <map>
 #include <set>
@@ -57,6 +58,11 @@ class dummyUpdate final : public telegram_api::Update {
     s.store_class_begin(field_name, "dummyUpdate");
     s.store_class_end();
   }
+
+  void store(TlStorerToJsonString &s, const char *field_name) const final {
+    s.store_class_begin(field_name, "dummyUpdate");
+    s.store_class_end();
+  }
 };
 
 class updateSentMessage final : public telegram_api::Update {
@@ -84,6 +90,15 @@ class updateSentMessage final : public telegram_api::Update {
   }
 
   void store(TlStorerToString &s, const char *field_name) const final {
+    s.store_class_begin(field_name, "updateSentMessage");
+    s.store_field("random_id", random_id_);
+    s.store_field("message_id", message_id_.get());
+    s.store_field("date", date_);
+    s.store_field("ttl_period", ttl_period_);
+    s.store_class_end();
+  }
+
+  void store(TlStorerToJsonString &s, const char *field_name) const final {
     s.store_class_begin(field_name, "updateSentMessage");
     s.store_field("random_id", random_id_);
     s.store_field("message_id", message_id_.get());

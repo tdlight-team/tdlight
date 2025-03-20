@@ -168,6 +168,15 @@ EOT
 EOT
 );
 
+        $this->addDocumentation('        public native String toJsonString();', <<<EOT
+        /**
+         * Returns a json string representation of the object.
+         *
+         * @return a json string representation of the object.
+         */
+EOT
+);
+
         $this->addDocumentation('    public abstract static class Function<R extends Object> extends Object {', <<<EOT
     /**
      * This class is a base class for all TDLib interface function-classes.

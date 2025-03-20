@@ -95,6 +95,8 @@ std::string TD_TL_writer_h::gen_output_begin_once() const {
 
          "std::string to_string(const BaseObject &value);\n\n"
 
+         "std::string to_json_string(const BaseObject &value);\n\n"
+
          "template <class T>\n"
          "std::string to_string(const object_ptr<T> &value) {\n"
          "  if (value == nullptr) {\n"
@@ -105,6 +107,15 @@ std::string TD_TL_writer_h::gen_output_begin_once() const {
          "}\n\n"
 
          "template <class T>\n"
+         "std::string to_json_string(const object_ptr<T> &value) {\n"
+         "  if (value == nullptr) {\n"
+         "    return \"null\";\n"
+         "  }\n"
+         "\n"
+         "  return to_json_string(*value);\n"
+         "}\n\n"
+
+         "template <class T>\n"
          "std::string to_string(const std::vector<object_ptr<T>> &values) {\n"
          "  std::string result = \"{\\n\";\n"
          "  for (const auto &value : values) {\n"
@@ -112,6 +123,20 @@ std::string TD_TL_writer_h::gen_output_begin_once() const {
          "      result += \"null\\n\";\n"
          "    } else {\n"
          "      result += to_string(*value);\n"
+         "    }\n"
+         "  }\n"
+         "  result += \"}\\n\";\n"
+         "  return result;\n"
+         "}\n\n"
+
+         "template <class T>\n"
+         "std::string to_json_string(const std::vector<object_ptr<T>> &values) {\n"
+         "  std::string result = \"{\\n\";\n"
+         "  for (const auto &value : values) {\n"
+         "    if (value == nullptr) {\n"
+         "      result += \"null\\n\";\n"
+         "    } else {\n"
+         "      result += to_json_string(*value);\n"
          "    }\n"
          "  }\n"
          "  result += \"}\\n\";\n"
