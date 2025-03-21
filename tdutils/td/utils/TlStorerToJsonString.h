@@ -29,9 +29,8 @@ class TlStorerToJsonString {
     if (!has_previously_appended_field_) {
       has_previously_appended_field_ = true;
     } else {
-      sb_.push_back(',');
+      sb_ << ",\n";
     }
-    sb_.push_back('\n');
     sb_.append_char(shift_, ' ');
     if (!name.empty()) {
       sb_ << "\"" << name << "\": ";
@@ -150,13 +149,14 @@ class TlStorerToJsonString {
     sb_ << "{\n";
     shift_ += 2;
     has_previously_appended_field_ = false;
-    store_field("@type", class_name);
+    store_field("@type", class_name.str());
   }
 
   void store_class_end() {
     CHECK(shift_ >= 2);
     shift_ -= 2;
     has_previously_appended_field_ = true;
+    sb_.push_back('\n');
     sb_.append_char(shift_, ' ');
     sb_ << "}";
   }
