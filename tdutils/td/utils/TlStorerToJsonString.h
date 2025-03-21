@@ -14,6 +14,9 @@
 #include "td/utils/StringBuilder.h"
 #include "td/utils/UInt.h"
 
+#include <sstream>
+#include <iomanip>
+
 namespace td {
 
 class TlStorerToJsonString {
@@ -42,6 +45,29 @@ class TlStorerToJsonString {
     sb_ << "\"" << base64_encode(data) << "\"";
   }
 
+  static std::string escape_json(const std::string &s) {
+    std::ostringstream o;
+    for (const char c : s) {
+      switch (c) {
+        case '"': o << "\\\""; break;
+        case '\\': o << "\\\\"; break;
+        case '\b': o << "\\b"; break;
+        case '\f': o << "\\f"; break;
+        case '\n': o << "\\n"; break;
+        case '\r': o << "\\r"; break;
+        case '\t': o << "\\t"; break;
+        default:
+          if ('\x00' <= c && c <= '\x1f') {
+            o << "\\u"
+              << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(c);
+          } else {
+            o << c;
+          }
+      }
+    }
+    return o.str();
+  }
+
  public:
   TlStorerToJsonString() = default;
   TlStorerToJsonString(const TlStorerToJsonString &) = delete;
@@ -52,7 +78,7 @@ class TlStorerToJsonString {
   void store_field(Slice name, const string &value) {
     store_field_begin(name);
     sb_.push_back('"');
-    sb_ << value;
+    sb_ << escape_json(value);
     sb_.push_back('"');
     store_field_end();
   }
