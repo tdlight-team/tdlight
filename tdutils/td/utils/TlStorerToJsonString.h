@@ -26,19 +26,19 @@ class TlStorerToJsonString {
   bool has_previously_appended_field_ = false;
 
   void store_field_begin(Slice name) {
+    if (!has_previously_appended_field_) {
+      has_previously_appended_field_ = true;
+    } else {
+      sb_.push_back(',');
+    }
+    sb_.push_back('\n');
     sb_.append_char(shift_, ' ');
     if (!name.empty()) {
-      if (!has_previously_appended_field_) {
-        has_previously_appended_field_ = true;
-      } else {
-        sb_.push_back(',');
-      }
       sb_ << "\"" << name << "\": ";
     }
   }
 
   void store_field_end() {
-    sb_.push_back('\n');
   }
 
   void store_binary(Slice data) {
@@ -134,6 +134,7 @@ class TlStorerToJsonString {
     store_field_begin(field_name);
     sb_ << "[\n";
     shift_ += 2;
+    has_previously_appended_field_ = false;
   }
 
   void store_vector_end() {
@@ -141,15 +142,15 @@ class TlStorerToJsonString {
     shift_ -= 2;
     has_previously_appended_field_ = true;
     sb_.append_char(shift_, ' ');
-    sb_ << "]\n";
+    sb_ << "]";
   }
 
   void store_class_begin(const char *field_name, Slice class_name) {
     store_field_begin(Slice(field_name));
     sb_ << "{\n";
     shift_ += 2;
-    store_field("@type", class_name);
     has_previously_appended_field_ = false;
+    store_field("@type", class_name);
   }
 
   void store_class_end() {
@@ -157,7 +158,7 @@ class TlStorerToJsonString {
     shift_ -= 2;
     has_previously_appended_field_ = true;
     sb_.append_char(shift_, ' ');
-    sb_ << "}\n";
+    sb_ << "}";
   }
 
   string move_as_string() {
