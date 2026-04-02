@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -21,7 +21,7 @@ namespace td {
 
 void NetQueryDelayer::delay(NetQueryPtr query) {
   query->debug("trying to delay");
-  query->is_ready();
+  CHECK(query->is_ready());
   CHECK(query->is_error());
   auto code = query->error().code();
   int32 timeout = 0;
@@ -34,11 +34,39 @@ void NetQueryDelayer::delay(NetQueryPtr query) {
     }
   } else if (code == 420) {
     auto error_message = query->error().message();
-    for (auto prefix :
-         {Slice("FLOOD_WAIT_"), Slice("SLOWMODE_WAIT_"), Slice("2FA_CONFIRM_WAIT_"), Slice("TAKEOUT_INIT_DELAY_")}) {
+    for (auto prefix : {Slice("FLOOD_WAIT_"), Slice("SLOWMODE_WAIT_"), Slice("2FA_CONFIRM_WAIT_"),
+                        Slice("TAKEOUT_INIT_DELAY_"), Slice("FLOOD_PREMIUM_WAIT_")}) {
       if (begins_with(error_message, prefix)) {
+        if (error_message.substr(prefix.size()).find('_') != CSlice::npos) {
+          // an unsupported error
+          query->set_error(Status::Error(400, error_message));
+          G()->net_query_dispatcher().dispatch(std::move(query));
+          return;
+        }
+
         timeout = clamp(to_integer<int>(error_message.substr(prefix.size())), 1, 14 * 24 * 60 * 60);
+        if (prefix == "FLOOD_PREMIUM_WAIT_") {
+          switch (query->type()) {
+            case NetQuery::Type::Common:
+              LOG(ERROR) << "Receive " << error_message << " for " << query;
+              break;
+            case NetQuery::Type::Upload:
+              G()->notify_speed_limited(true);
+              break;
+            case NetQuery::Type::Download:
+            case NetQuery::Type::DownloadSmall:
+              G()->notify_speed_limited(false);
+              break;
+            default:
+              UNREACHABLE();
+          }
+        }
         break;
+      }
+    }
+    if (timeout == 0) {
+      if (begins_with(error_message, "FLOOD_SKIP_FAILED_WAIT")) {
+        timeout = 1;
       }
     }
   } else {
@@ -119,6 +147,7 @@ void NetQueryDelayer::tear_down() {
     query_slot.query_->set_error(Global::request_aborted_error());
     G()->net_query_dispatcher().dispatch(std::move(query_slot.query_));
   });
+  parent_.reset();
 }
 
 }  // namespace td

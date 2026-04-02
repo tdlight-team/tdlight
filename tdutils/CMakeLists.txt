@@ -1,14 +1,16 @@
-if ((CMAKE_MAJOR_VERSION LESS 3) OR (CMAKE_VERSION VERSION_LESS "3.0.2"))
-  message(FATAL_ERROR "CMake >= 3.0.2 is required")
+if ((CMAKE_MAJOR_VERSION LESS 3) OR (CMAKE_VERSION VERSION_LESS "3.10"))
+  message(FATAL_ERROR "CMake >= 3.10 is required")
 endif()
 
-option(TDUTILS_MIME_TYPE "Generate MIME types conversion; requires gperf" ON)
+option(TDUTILS_ENABLE_INSTALL "Enable installation of the library." ON)
+option(TDUTILS_MIME_TYPE "Generate MIME types conversion; requires gperf." ON)
+option(TDUTILS_USE_EXTERNAL_DEPENDENCIES "Use external libraries if available." ON)
 
 if (NOT DEFINED CMAKE_INSTALL_LIBDIR)
   set(CMAKE_INSTALL_LIBDIR "lib")
 endif()
 
-if (NOT ZLIB_FOUND)
+if (NOT ZLIB_FOUND AND TDUTILS_USE_EXTERNAL_DEPENDENCIES)
   find_package(ZLIB)
 endif()
 if (ZLIB_FOUND)
@@ -24,14 +26,14 @@ if (ZLIB_FOUND)
   endif()
 endif()
 
-if (NOT CRC32C_FOUND)
+if (NOT CRC32C_FOUND AND TDUTILS_USE_EXTERNAL_DEPENDENCIES)
   find_package(Crc32c QUIET)
 endif()
 if (CRC32C_FOUND)
   set(TD_HAVE_CRC32C 1)
 endif()
 
-if (TD_WITH_ABSEIL)
+if (TD_WITH_ABSEIL AND TDUTILS_USE_EXTERNAL_DEPENDENCIES)
   find_package(ABSL QUIET)
   if (ABSL_FOUND)
     set(TD_HAVE_ABSL 1)
@@ -42,16 +44,13 @@ configure_file(td/utils/config.h.in td/utils/config.h @ONLY)
 
 add_subdirectory(generate)
 
-# TDUTILS
 set_source_files_properties(${TDMIME_AUTO} PROPERTIES GENERATED TRUE)
 if (CLANG OR GCC)
   set_property(SOURCE ${TDMIME_AUTO} APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-conversion")
 elseif (MSVC)
   set_property(SOURCE ${TDMIME_AUTO} APPEND_STRING PROPERTY COMPILE_FLAGS " /wd4267")
 endif()
-if (CLANG)
-  set_property(SOURCE ${TDMIME_AUTO} APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-deprecated-register")
-endif()
+set_property(SOURCE ${TDMIME_AUTO} APPEND PROPERTY COMPILE_DEFINITIONS "__gnu_inline__=;register=")
 
 set(TDUTILS_SOURCE
   td/utils/port/Clocks.cpp
@@ -97,6 +96,7 @@ set(TDUTILS_SOURCE
   td/utils/BufferedUdp.cpp
   td/utils/check.cpp
   td/utils/crypto.cpp
+  td/utils/Ed25519.cpp
   td/utils/emoji.cpp
   td/utils/ExitGuard.cpp
   td/utils/FileLog.cpp
@@ -107,6 +107,7 @@ set(TDUTILS_SOURCE
   td/utils/Gzip.cpp
   td/utils/GzipByteFlow.cpp
   td/utils/Hints.cpp
+  td/utils/HttpDate.cpp
   td/utils/HttpUrl.cpp
   td/utils/JsonBuilder.cpp
   td/utils/logging.cpp
@@ -138,8 +139,8 @@ set(TDUTILS_SOURCE
   td/utils/port/EventFdBase.h
   td/utils/port/FileFd.h
   td/utils/port/FromApp.h
-  td/utils/port/IPAddress.h
   td/utils/port/IoSlice.h
+  td/utils/port/IPAddress.h
   td/utils/port/MemoryMapping.h
   td/utils/port/Mutex.h
   td/utils/port/path.h
@@ -206,14 +207,15 @@ set(TDUTILS_SOURCE
   td/utils/crypto.h
   td/utils/DecTree.h
   td/utils/Destructor.h
+  td/utils/Ed25519.h
   td/utils/emoji.h
   td/utils/Enumerator.h
   td/utils/EpochBasedMemoryReclamation.h
   td/utils/ExitGuard.h
   td/utils/FileLog.h
   td/utils/filesystem.h
-  td/utils/fixed_vector.h
   td/utils/find_boundary.h
+  td/utils/fixed_vector.h
   td/utils/FlatHashMap.h
   td/utils/FlatHashMapChunks.h
   td/utils/FlatHashSet.h
@@ -231,6 +233,7 @@ set(TDUTILS_SOURCE
   td/utils/HazardPointers.h
   td/utils/Heap.h
   td/utils/Hints.h
+  td/utils/HttpDate.h
   td/utils/HttpUrl.h
   td/utils/int_types.h
   td/utils/invoke.h
@@ -243,8 +246,8 @@ set(TDUTILS_SOURCE
   td/utils/MovableValue.h
   td/utils/MpmcQueue.h
   td/utils/MpmcWaiter.h
-  td/utils/MpscPollableQueue.h
   td/utils/MpscLinkQueue.h
+  td/utils/MpscPollableQueue.h
   td/utils/Named.h
   td/utils/NullLog.h
   td/utils/ObjectPool.h
@@ -262,6 +265,7 @@ set(TDUTILS_SOURCE
   td/utils/SetNode.h
   td/utils/SharedObjectPool.h
   td/utils/SharedSlice.h
+  td/utils/simple_tests.h
   td/utils/Slice-decl.h
   td/utils/Slice.h
   td/utils/SliceBuilder.h
@@ -347,7 +351,6 @@ set(TDUTILS_TEST_SOURCE
   PARENT_SCOPE
 )
 
-#LIBRARIES
 add_library(tdutils STATIC ${TDUTILS_SOURCE})
 
 if (NOT CMAKE_CROSSCOMPILING AND TDUTILS_MIME_TYPE)
@@ -403,17 +406,19 @@ if (ANDROID)
   target_link_libraries(tdutils PRIVATE log)
 endif()
 
-if (CMAKE_SYSTEM_NAME MATCHES "NetBSD")
-  target_link_directories(tdutils PUBLIC /usr/pkg/gcc12/x86_64--netbsd/lib /usr/pkg/gcc12/i486--netbsdelf/lib)
-  target_link_libraries(tdutils PUBLIC atomic)
+find_package(Atomics REQUIRED)
+if (ATOMICS_LIBRARIES)
+  target_link_libraries(tdutils PUBLIC "${ATOMICS_LIBRARIES}")
 endif()
 
-install(TARGETS tdutils EXPORT TdStaticTargets
-  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-  ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-)
+if (TDUTILS_ENABLE_INSTALL)
+  install(TARGETS tdutils EXPORT TdStaticTargets
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  )
+endif()
 
-if (TD_TEST_FOLLY AND ABSL_FOUND)
+if (TD_TEST_FOLLY AND ABSL_FOUND AND TDUTILS_USE_EXTERNAL_DEPENDENCIES)
   find_package(benchmark QUIET)
   find_package(folly QUIET)
   find_package(gflags QUIET)

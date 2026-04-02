@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -9,7 +9,10 @@
 #include "td/telegram/DraftMessage.h"
 
 #include "td/telegram/InputMessageText.hpp"
+#include "td/telegram/MessageId.h"
 #include "td/telegram/MessageInputReplyTo.hpp"
+#include "td/telegram/MessageQuote.h"
+#include "td/telegram/SuggestedPost.hpp"
 #include "td/telegram/Version.h"
 
 #include "td/utils/tl_helpers.h"
@@ -21,10 +24,14 @@ void DraftMessage::store(StorerT &storer) const {
   bool has_input_message_text = !input_message_text_.is_empty();
   bool has_message_input_reply_to = !message_input_reply_to_.is_empty();
   bool has_local_content = local_content_ != nullptr;
+  bool has_message_effect_id = message_effect_id_.is_valid();
+  bool has_suggested_post = suggested_post_ != nullptr;
   BEGIN_STORE_FLAGS();
   STORE_FLAG(has_input_message_text);
   STORE_FLAG(has_message_input_reply_to);
   STORE_FLAG(has_local_content);
+  STORE_FLAG(has_message_effect_id);
+  STORE_FLAG(has_suggested_post);
   END_STORE_FLAGS();
   td::store(date_, storer);
   if (has_input_message_text) {
@@ -36,6 +43,12 @@ void DraftMessage::store(StorerT &storer) const {
   if (has_local_content) {
     store_draft_message_content(local_content_.get(), storer);
   }
+  if (has_message_effect_id) {
+    td::store(message_effect_id_, storer);
+  }
+  if (has_suggested_post) {
+    td::store(suggested_post_, storer);
+  }
 }
 
 template <class ParserT>
@@ -44,12 +57,16 @@ void DraftMessage::parse(ParserT &parser) {
   bool has_input_message_text;
   bool has_message_input_reply_to = false;
   bool has_local_content = false;
+  bool has_message_effect_id = false;
+  bool has_suggested_post = false;
   if (parser.version() >= static_cast<int32>(Version::SupportRepliesInOtherChats)) {
     has_legacy_reply_to_message_id = false;
     BEGIN_PARSE_FLAGS();
     PARSE_FLAG(has_input_message_text);
     PARSE_FLAG(has_message_input_reply_to);
     PARSE_FLAG(has_local_content);
+    PARSE_FLAG(has_message_effect_id);
+    PARSE_FLAG(has_suggested_post);
     END_PARSE_FLAGS();
   } else {
     has_legacy_reply_to_message_id = true;
@@ -59,7 +76,7 @@ void DraftMessage::parse(ParserT &parser) {
   if (has_legacy_reply_to_message_id) {
     MessageId legacy_reply_to_message_id;
     td::parse(legacy_reply_to_message_id, parser);
-    message_input_reply_to_ = MessageInputReplyTo{legacy_reply_to_message_id, DialogId(), FormattedText(), 0};
+    message_input_reply_to_ = MessageInputReplyTo{legacy_reply_to_message_id, DialogId(), MessageQuote(), 0};
   }
   if (has_input_message_text) {
     td::parse(input_message_text_, parser);
@@ -69,6 +86,12 @@ void DraftMessage::parse(ParserT &parser) {
   }
   if (has_local_content) {
     parse_draft_message_content(local_content_, parser);
+  }
+  if (has_message_effect_id) {
+    td::parse(message_effect_id_, parser);
+  }
+  if (has_suggested_post) {
+    td::parse(suggested_post_, parser);
   }
 }
 

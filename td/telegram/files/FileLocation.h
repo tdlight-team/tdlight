@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -56,6 +56,7 @@ struct PartialRemoteFileLocation {
   int32 part_size_;
   int32 ready_part_count_;
   int32 is_big_;
+  int64 ready_size_;
 
   template <class StorerT>
   void store(StorerT &storer) const;
@@ -65,7 +66,8 @@ struct PartialRemoteFileLocation {
 
 inline bool operator==(const PartialRemoteFileLocation &lhs, const PartialRemoteFileLocation &rhs) {
   return lhs.file_id_ == rhs.file_id_ && lhs.part_count_ == rhs.part_count_ && lhs.part_size_ == rhs.part_size_ &&
-         lhs.ready_part_count_ == rhs.ready_part_count_ && lhs.is_big_ == rhs.is_big_;
+         lhs.ready_part_count_ == rhs.ready_part_count_ && lhs.is_big_ == rhs.is_big_ &&
+         lhs.ready_size_ == rhs.ready_size_;
 }
 
 inline bool operator!=(const PartialRemoteFileLocation &lhs, const PartialRemoteFileLocation &rhs) {
@@ -74,7 +76,8 @@ inline bool operator!=(const PartialRemoteFileLocation &lhs, const PartialRemote
 
 inline StringBuilder &operator<<(StringBuilder &sb, const PartialRemoteFileLocation &location) {
   return sb << '[' << (location.is_big_ ? "Big" : "Small") << " partial remote location with " << location.part_count_
-            << " parts of size " << location.part_size_ << " with " << location.ready_part_count_ << " ready parts]";
+            << " parts of size " << location.part_size_ << " with " << location.ready_part_count_
+            << " ready parts of total size " << location.ready_size_ << ']';
 }
 
 struct PhotoRemoteFileLocation {
@@ -395,13 +398,14 @@ class FullRemoteFileLocation {
             switch (thumbnail.file_type) {
               case FileType::Photo:
               case FileType::PhotoStory:
+              case FileType::SelfDestructingPhoto:
                 return make_tl_object<telegram_api::inputPhotoFileLocation>(
                     id, access_hash, BufferSlice(file_reference_),
-                    std::string(1, static_cast<char>(static_cast<uint8>(thumbnail.thumbnail_type))));
+                    std::string(1, static_cast<char>(static_cast<uint8>(thumbnail.thumbnail_type.type))));
               case FileType::Thumbnail:
                 return make_tl_object<telegram_api::inputDocumentFileLocation>(
                     id, access_hash, BufferSlice(file_reference_),
-                    std::string(1, static_cast<char>(static_cast<uint8>(thumbnail.thumbnail_type))));
+                    std::string(1, static_cast<char>(static_cast<uint8>(thumbnail.thumbnail_type.type))));
               default:
                 UNREACHABLE();
                 break;
@@ -412,9 +416,8 @@ class FullRemoteFileLocation {
           case PhotoSizeSource::Type::DialogPhotoBig: {
             auto &dialog_photo = source.dialog_photo();
             bool is_big = source.get_type("as_input_file_location 2") == PhotoSizeSource::Type::DialogPhotoBig;
-            return make_tl_object<telegram_api::inputPeerPhotoFileLocation>(
-                is_big * telegram_api::inputPeerPhotoFileLocation::BIG_MASK, false /*ignored*/,
-                dialog_photo.get_input_peer(), id);
+            return make_tl_object<telegram_api::inputPeerPhotoFileLocation>(0, is_big, dialog_photo.get_input_peer(),
+                                                                            id);
           }
           case PhotoSizeSource::Type::StickerSetThumbnail:
             UNREACHABLE();
@@ -430,8 +433,7 @@ class FullRemoteFileLocation {
             auto &dialog_photo = source.dialog_photo_legacy();
             bool is_big = source.get_type("as_input_file_location 3") == PhotoSizeSource::Type::DialogPhotoBigLegacy;
             return make_tl_object<telegram_api::inputPeerPhotoFileLocationLegacy>(
-                is_big * telegram_api::inputPeerPhotoFileLocationLegacy::BIG_MASK, false /*ignored*/,
-                dialog_photo.get_input_peer(), dialog_photo.volume_id, dialog_photo.local_id);
+                0, is_big, dialog_photo.get_input_peer(), dialog_photo.volume_id, dialog_photo.local_id);
           }
           case PhotoSizeSource::Type::StickerSetThumbnailLegacy: {
             auto &sticker_set_thumbnail = source.sticker_set_thumbnail_legacy();
@@ -663,6 +665,7 @@ struct PartialLocalFileLocation {
   string path_;
   string iv_;
   string ready_bitmask_;
+  int64 ready_size_;  // calculated from ready_bitmask_ and final size of the file
 
   template <class StorerT>
   void store(StorerT &storer) const;
@@ -672,7 +675,7 @@ struct PartialLocalFileLocation {
 
 inline bool operator==(const PartialLocalFileLocation &lhs, const PartialLocalFileLocation &rhs) {
   return lhs.file_type_ == rhs.file_type_ && lhs.path_ == rhs.path_ && lhs.part_size_ == rhs.part_size_ &&
-         lhs.iv_ == rhs.iv_ && lhs.ready_bitmask_ == rhs.ready_bitmask_;
+         lhs.iv_ == rhs.iv_ && lhs.ready_bitmask_ == rhs.ready_bitmask_ && lhs.ready_size_ == rhs.ready_size_;
 }
 
 inline bool operator!=(const PartialLocalFileLocation &lhs, const PartialLocalFileLocation &rhs) {
@@ -681,8 +684,8 @@ inline bool operator!=(const PartialLocalFileLocation &lhs, const PartialLocalFi
 
 inline StringBuilder &operator<<(StringBuilder &sb, const PartialLocalFileLocation &location) {
   return sb << "[partial local location of " << location.file_type_ << " with part size " << location.part_size_
-            << " and ready parts " << Bitmask(Bitmask::Decode{}, location.ready_bitmask_) << "] at \"" << location.path_
-            << '"';
+            << " and ready parts " << Bitmask(Bitmask::Decode{}, location.ready_bitmask_) << " of size "
+            << location.ready_size_ << "] at \"" << location.path_ << '"';
 }
 
 struct FullLocalFileLocation {

@@ -1,14 +1,18 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/telegram/SendCodeHelper.h"
 
+#include "td/telegram/misc.h"
+
 #include "td/utils/base64.h"
 #include "td/utils/buffer.h"
+#include "td/utils/logging.h"
 #include "td/utils/Time.h"
+#include "td/utils/utf8.h"
 
 namespace td {
 
@@ -19,7 +23,8 @@ void SendCodeHelper::on_sent_code(telegram_api::object_ptr<telegram_api::auth_se
   next_code_timestamp_ = Time::now() + sent_code->timeout_;
 
   if (next_code_info_.type == AuthenticationCodeInfo::Type::None &&
-      (sent_code_info_.type == AuthenticationCodeInfo::Type::FirebaseAndroid ||
+      (sent_code_info_.type == AuthenticationCodeInfo::Type::FirebaseAndroidSafetyNet ||
+       sent_code_info_.type == AuthenticationCodeInfo::Type::FirebaseAndroidPlayIntegrity ||
        sent_code_info_.type == AuthenticationCodeInfo::Type::FirebaseIos)) {
     next_code_info_ = {AuthenticationCodeInfo::Type::Sms, sent_code_info_.length, string()};
   }
@@ -40,33 +45,41 @@ td_api::object_ptr<td_api::authenticationCodeInfo> SendCodeHelper::get_authentic
       max(static_cast<int32>(next_code_timestamp_ - Time::now() + 1 - 1e-9), 0));
 }
 
-Result<telegram_api::auth_resendCode> SendCodeHelper::resend_code() const {
+Result<telegram_api::auth_resendCode> SendCodeHelper::resend_code(
+    td_api::object_ptr<td_api::ResendCodeReason> &&reason) const {
   if (next_code_info_.type == AuthenticationCodeInfo::Type::None) {
     return Status::Error(400, "Authentication code can't be resend");
   }
-  return telegram_api::auth_resendCode(phone_number_, phone_code_hash_);
+  int32 flags = 0;
+  string reason_str;
+  if (reason != nullptr && reason->get_id() == td_api::resendCodeReasonVerificationFailed::ID) {
+    reason_str = std::move(static_cast<td_api::resendCodeReasonVerificationFailed *>(reason.get())->error_message_);
+  }
+  if (!reason_str.empty() && clean_input_string(reason_str)) {
+    flags |= telegram_api::auth_resendCode::REASON_MASK;
+  }
+  return telegram_api::auth_resendCode(flags, phone_number_, phone_code_hash_, reason_str);
 }
 
 telegram_api::object_ptr<telegram_api::codeSettings> SendCodeHelper::get_input_code_settings(const Settings &settings) {
   int32 flags = 0;
   vector<BufferSlice> logout_tokens;
   string device_token;
+  bool allow_flashcall = false;
+  bool current_number = false;
+  bool allow_app_hash = false;
+  bool allow_missed_call = false;
+  bool allow_firebase = false;
+  bool unknown_number = false;
   bool is_app_sandbox = false;
   if (settings != nullptr) {
-    if (settings->allow_flash_call_) {
-      flags |= telegram_api::codeSettings::ALLOW_FLASHCALL_MASK;
-    }
-    if (settings->allow_missed_call_) {
-      flags |= telegram_api::codeSettings::ALLOW_MISSED_CALL_MASK;
-    }
-    if (settings->is_current_phone_number_) {
-      flags |= telegram_api::codeSettings::CURRENT_NUMBER_MASK;
-    }
-    if (settings->allow_sms_retriever_api_) {
-      flags |= telegram_api::codeSettings::ALLOW_APP_HASH_MASK;
-    }
+    allow_flashcall = settings->allow_flash_call_;
+    current_number = settings->is_current_phone_number_;
+    allow_app_hash = settings->allow_sms_retriever_api_;
+    allow_missed_call = settings->allow_missed_call_;
+    unknown_number = settings->has_unknown_phone_number_;
     if (settings->firebase_authentication_settings_ != nullptr) {
-      flags |= telegram_api::codeSettings::ALLOW_FIREBASE_MASK;
+      allow_firebase = true;
       if (settings->firebase_authentication_settings_->get_id() == td_api::firebaseAuthenticationSettingsIos::ID) {
         flags |= telegram_api::codeSettings::TOKEN_MASK;
         auto ios_settings = static_cast<const td_api::firebaseAuthenticationSettingsIos *>(
@@ -89,8 +102,8 @@ telegram_api::object_ptr<telegram_api::codeSettings> SendCodeHelper::get_input_c
       flags |= telegram_api::codeSettings::LOGOUT_TOKENS_MASK;
     }
   }
-  return telegram_api::make_object<telegram_api::codeSettings>(flags, false /*ignored*/, false /*ignored*/,
-                                                               false /*ignored*/, false /*ignored*/, false /*ignored*/,
+  return telegram_api::make_object<telegram_api::codeSettings>(flags, allow_flashcall, current_number, allow_app_hash,
+                                                               allow_missed_call, allow_firebase, unknown_number,
                                                                std::move(logout_tokens), device_token, is_app_sandbox);
 }
 
@@ -102,17 +115,29 @@ telegram_api::auth_sendCode SendCodeHelper::send_code(string phone_number, const
 
 telegram_api::auth_requestFirebaseSms SendCodeHelper::request_firebase_sms(const string &token) {
   string safety_net_token;
+  string play_integrity_token;
   string ios_push_secret;
   int32 flags = 0;
 #if TD_ANDROID
-  flags |= telegram_api::auth_requestFirebaseSms::SAFETY_NET_TOKEN_MASK;
-  safety_net_token = token;
+  if (sent_code_info_.type == AuthenticationCodeInfo::Type::FirebaseAndroidSafetyNet) {
+    flags |= telegram_api::auth_requestFirebaseSms::SAFETY_NET_TOKEN_MASK;
+    safety_net_token = token;
+  } else if (sent_code_info_.type == AuthenticationCodeInfo::Type::FirebaseAndroidPlayIntegrity) {
+    flags |= telegram_api::auth_requestFirebaseSms::PLAY_INTEGRITY_TOKEN_MASK;
+    play_integrity_token = token;
+  }
 #elif TD_DARWIN
-  flags |= telegram_api::auth_requestFirebaseSms::IOS_PUSH_SECRET_MASK;
-  ios_push_secret = token;
+  if (sent_code_info_.type == AuthenticationCodeInfo::Type::FirebaseIos) {
+    flags |= telegram_api::auth_requestFirebaseSms::IOS_PUSH_SECRET_MASK;
+    ios_push_secret = token;
+  }
 #endif
   return telegram_api::auth_requestFirebaseSms(flags, phone_number_, phone_code_hash_, safety_net_token,
-                                               ios_push_secret);
+                                               play_integrity_token, ios_push_secret);
+}
+
+telegram_api::auth_reportMissingCode SendCodeHelper::report_missing_code(const string &mobile_network_code) {
+  return telegram_api::auth_reportMissingCode(phone_number_, phone_code_hash_, mobile_network_code);
 }
 
 telegram_api::account_sendVerifyEmailCode SendCodeHelper::send_verify_email_code(const string &email_address) {
@@ -193,15 +218,35 @@ SendCodeHelper::AuthenticationCodeInfo SendCodeHelper::get_sent_authentication_c
     }
     case telegram_api::auth_sentCodeTypeFirebaseSms::ID: {
       auto code_type = move_tl_object_as<telegram_api::auth_sentCodeTypeFirebaseSms>(sent_code_type_ptr);
+#if TD_ANDROID
       if ((code_type->flags_ & telegram_api::auth_sentCodeTypeFirebaseSms::NONCE_MASK) != 0) {
-        return AuthenticationCodeInfo{AuthenticationCodeInfo::Type::FirebaseAndroid, code_type->length_,
+        return AuthenticationCodeInfo{AuthenticationCodeInfo::Type::FirebaseAndroidSafetyNet, code_type->length_,
                                       code_type->nonce_.as_slice().str()};
       }
+      if ((code_type->flags_ & telegram_api::auth_sentCodeTypeFirebaseSms::PLAY_INTEGRITY_NONCE_MASK) != 0) {
+        return AuthenticationCodeInfo{AuthenticationCodeInfo::Type::FirebaseAndroidPlayIntegrity, code_type->length_,
+                                      code_type->play_integrity_nonce_.as_slice().str(), 0,
+                                      code_type->play_integrity_project_id_};
+      }
+#elif TD_DARWIN
       if ((code_type->flags_ & telegram_api::auth_sentCodeTypeFirebaseSms::RECEIPT_MASK) != 0) {
         return AuthenticationCodeInfo{AuthenticationCodeInfo::Type::FirebaseIos, code_type->length_,
                                       std::move(code_type->receipt_), code_type->push_timeout_};
       }
+#endif
       return AuthenticationCodeInfo{AuthenticationCodeInfo::Type::Sms, code_type->length_, ""};
+    }
+    case telegram_api::auth_sentCodeTypeSmsWord::ID: {
+      auto code_type = move_tl_object_as<telegram_api::auth_sentCodeTypeSmsWord>(sent_code_type_ptr);
+      if (utf8_length(code_type->beginning_) > 1u) {
+        LOG(ERROR) << "Receive \"" << code_type->beginning_ << "\" as word first letter";
+        code_type->beginning_ = string();
+      }
+      return AuthenticationCodeInfo{AuthenticationCodeInfo::Type::SmsWord, 0, code_type->beginning_};
+    }
+    case telegram_api::auth_sentCodeTypeSmsPhrase::ID: {
+      auto code_type = move_tl_object_as<telegram_api::auth_sentCodeTypeSmsPhrase>(sent_code_type_ptr);
+      return AuthenticationCodeInfo{AuthenticationCodeInfo::Type::SmsPhrase, 0, code_type->beginning_};
     }
     case telegram_api::auth_sentCodeTypeEmailCode::ID:
     case telegram_api::auth_sentCodeTypeSetUpEmailRequired::ID:
@@ -230,12 +275,22 @@ td_api::object_ptr<td_api::AuthenticationCodeType> SendCodeHelper::get_authentic
     case AuthenticationCodeInfo::Type::Fragment:
       return td_api::make_object<td_api::authenticationCodeTypeFragment>(authentication_code_info.pattern,
                                                                          authentication_code_info.length);
-    case AuthenticationCodeInfo::Type::FirebaseAndroid:
-      return td_api::make_object<td_api::authenticationCodeTypeFirebaseAndroid>(authentication_code_info.pattern,
-                                                                                authentication_code_info.length);
+    case AuthenticationCodeInfo::Type::FirebaseAndroidSafetyNet:
+      return td_api::make_object<td_api::authenticationCodeTypeFirebaseAndroid>(
+          td_api::make_object<td_api::firebaseDeviceVerificationParametersSafetyNet>(authentication_code_info.pattern),
+          authentication_code_info.length);
+    case AuthenticationCodeInfo::Type::FirebaseAndroidPlayIntegrity:
+      return td_api::make_object<td_api::authenticationCodeTypeFirebaseAndroid>(
+          td_api::make_object<td_api::firebaseDeviceVerificationParametersPlayIntegrity>(
+              base64url_encode(authentication_code_info.pattern), authentication_code_info.cloud_project_number),
+          authentication_code_info.length);
     case AuthenticationCodeInfo::Type::FirebaseIos:
       return td_api::make_object<td_api::authenticationCodeTypeFirebaseIos>(
           authentication_code_info.pattern, authentication_code_info.push_timeout, authentication_code_info.length);
+    case AuthenticationCodeInfo::Type::SmsWord:
+      return td_api::make_object<td_api::authenticationCodeTypeSmsWord>(authentication_code_info.pattern);
+    case AuthenticationCodeInfo::Type::SmsPhrase:
+      return td_api::make_object<td_api::authenticationCodeTypeSmsPhrase>(authentication_code_info.pattern);
     default:
       UNREACHABLE();
       return nullptr;

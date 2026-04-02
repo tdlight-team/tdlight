@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -81,8 +81,9 @@ struct AesCtrEncryptionEvent {
     store(iv_, storer);
     store(key_hash_, storer);
   }
+
   template <class ParserT>
-  void parse(ParserT &&parser) {
+  void parse(ParserT &parser) {
     using td::parse;
     BEGIN_PARSE_FLAGS();
     END_PARSE_FLAGS();
@@ -340,7 +341,10 @@ void Binlog::do_event(BinlogEvent &&event) {
   if (event.type_ < 0) {
     if (event.type_ == BinlogEvent::ServiceTypes::AesCtrEncryption) {
       detail::AesCtrEncryptionEvent encryption_event;
-      encryption_event.parse(TlParser(event.get_data()));
+      TlParser event_parser(event.get_data());
+      encryption_event.parse(event_parser);
+      event_parser.fetch_end();
+      LOG_CHECK(event_parser.get_error() == nullptr) << event_parser.get_status();
 
       string key;
       if (aes_ctr_key_salt_ == encryption_event.key_salt_) {
@@ -699,12 +703,14 @@ void Binlog::do_reindex() {
   auto ratio = static_cast<double>(start_size) / static_cast<double>(finish_size + 1);
 
   [&](Slice msg) {
-    if (start_size > (10 << 20) || finish_time - start_time > 1) {
-      LOG(WARNING) << "Slow " << msg;
+    if (finish_time - start_time > 1) {
+      LOG(WARNING) << "Slow regenerate " << msg;
+    } else if (start_size > (10 << 20)) {
+      LOG(WARNING) << "Large " << msg;
     } else {
-      LOG(INFO) << msg;
+      LOG(INFO) << "Regenerate " << msg;
     }
-  }(PSLICE() << "Regenerate index " << tag("name", path_) << tag("time", format::as_time(finish_time - start_time))
+  }(PSLICE() << "index " << tag("name", path_) << tag("time", format::as_time(finish_time - start_time))
              << tag("before_size", format::as_size(start_size)) << tag("after_size", format::as_size(finish_size))
              << tag("ratio", ratio) << tag("before_events", start_events) << tag("after_events", finish_events));
 

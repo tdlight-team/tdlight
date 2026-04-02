@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -10,6 +10,7 @@
 #include "td/telegram/telegram_api.h"
 
 #include "td/utils/common.h"
+#include "td/utils/Slice.h"
 #include "td/utils/StringBuilder.h"
 #include "td/utils/tl_helpers.h"
 
@@ -19,12 +20,14 @@ class Usernames {
   vector<string> active_usernames_;
   vector<string> disabled_usernames_;
   int32 editable_username_pos_ = -1;
+  bool is_editable_username_disabled_ = false;
+  vector<string> other_editable_usernames_;
 
   friend bool operator==(const Usernames &lhs, const Usernames &rhs);
 
   friend StringBuilder &operator<<(StringBuilder &string_builder, const Usernames &usernames);
 
-  void check_utf8_validness();
+  void check_validness();
 
  public:
   Usernames() = default;
@@ -37,9 +40,9 @@ class Usernames {
     return editable_username_pos_ == -1 && active_usernames_.empty() && disabled_usernames_.empty();
   }
 
-  string get_first_username() const {
+  Slice get_first_username() const {
     if (!has_first_username()) {
-      return string();
+      return Slice();
     }
     return active_usernames_[0];
   }
@@ -48,11 +51,12 @@ class Usernames {
     return !active_usernames_.empty();
   }
 
-  string get_editable_username() const {
+  Slice get_editable_username() const {
     if (!has_editable_username()) {
-      return string();
+      return Slice();
     }
-    return active_usernames_[editable_username_pos_];
+    return is_editable_username_disabled_ ? disabled_usernames_[editable_username_pos_]
+                                          : active_usernames_[editable_username_pos_];
   }
 
   bool has_editable_username() const {
@@ -65,9 +69,9 @@ class Usernames {
 
   Usernames change_editable_username(string &&new_username) const;
 
-  bool can_toggle(const string &username) const;
+  bool can_toggle(bool for_bot, const string &username) const;
 
-  Usernames toggle(const string &username, bool is_active) const;
+  Usernames toggle(bool for_bot, const string &username, bool is_active) const;
 
   Usernames deactivate_all() const;
 
@@ -82,22 +86,36 @@ class Usernames {
     bool has_disabled_usernames = !disabled_usernames_.empty();
     bool has_editable_username = editable_username_pos_ != -1;
     bool has_active_usernames = !active_usernames_.empty();
+    bool has_other_editable_usernames = !other_editable_usernames_.empty();
     BEGIN_STORE_FLAGS();
     STORE_FLAG(has_many_active_usernames);
     STORE_FLAG(has_disabled_usernames);
     STORE_FLAG(has_editable_username);
     STORE_FLAG(has_active_usernames);
+    STORE_FLAG(is_editable_username_disabled_);
+    STORE_FLAG(has_other_editable_usernames);
     END_STORE_FLAGS();
-    if (has_many_active_usernames) {
-      td::store(active_usernames_, storer);
-      if (has_editable_username) {
-        td::store(editable_username_pos_, storer);
+    if (is_editable_username_disabled_) {
+      CHECK(has_editable_username);
+      if (has_active_usernames) {
+        td::store(active_usernames_, storer);
       }
-    } else if (has_active_usernames) {
-      td::store(active_usernames_[0], storer);
+      td::store(editable_username_pos_, storer);
+    } else {
+      if (has_many_active_usernames) {
+        td::store(active_usernames_, storer);
+        if (has_editable_username) {
+          td::store(editable_username_pos_, storer);
+        }
+      } else if (has_active_usernames) {
+        td::store(active_usernames_[0], storer);
+      }
     }
     if (has_disabled_usernames) {
       td::store(disabled_usernames_, storer);
+    }
+    if (has_other_editable_usernames) {
+      td::store(other_editable_usernames_, storer);
     }
   }
 
@@ -108,29 +126,41 @@ class Usernames {
     bool has_disabled_usernames;
     bool has_editable_username;
     bool has_active_usernames;
+    bool has_other_editable_usernames;
     BEGIN_PARSE_FLAGS();
     PARSE_FLAG(has_many_active_usernames);
     PARSE_FLAG(has_disabled_usernames);
     PARSE_FLAG(has_editable_username);
     PARSE_FLAG(has_active_usernames);
+    PARSE_FLAG(is_editable_username_disabled_);
+    PARSE_FLAG(has_other_editable_usernames);
     END_PARSE_FLAGS();
-    if (has_many_active_usernames) {
-      td::parse(active_usernames_, parser);
-      if (has_editable_username) {
-        td::parse(editable_username_pos_, parser);
-        CHECK(static_cast<size_t>(editable_username_pos_) < active_usernames_.size());
+    if (is_editable_username_disabled_) {
+      if (has_active_usernames) {
+        td::parse(active_usernames_, parser);
       }
-    } else if (has_active_usernames) {
-      active_usernames_.resize(1);
-      td::parse(active_usernames_[0], parser);
-      if (has_editable_username) {
-        editable_username_pos_ = 0;
+      td::parse(editable_username_pos_, parser);
+    } else {
+      if (has_many_active_usernames) {
+        td::parse(active_usernames_, parser);
+        if (has_editable_username) {
+          td::parse(editable_username_pos_, parser);
+        }
+      } else if (has_active_usernames) {
+        active_usernames_.resize(1);
+        td::parse(active_usernames_[0], parser);
+        if (has_editable_username) {
+          editable_username_pos_ = 0;
+        }
       }
     }
     if (has_disabled_usernames) {
       td::parse(disabled_usernames_, parser);
     }
-    check_utf8_validness();
+    if (has_other_editable_usernames) {
+      td::parse(other_editable_usernames_, parser);
+    }
+    check_validness();
   }
 };
 

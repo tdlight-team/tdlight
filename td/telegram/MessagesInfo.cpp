@@ -1,15 +1,16 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/telegram/MessagesInfo.h"
 
-#include "td/telegram/ContactsManager.h"
+#include "td/telegram/ChatManager.h"
 #include "td/telegram/ForumTopicManager.h"
 #include "td/telegram/Td.h"
 #include "td/telegram/telegram_api.h"
+#include "td/telegram/UserManager.h"
 
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
@@ -32,6 +33,7 @@ MessagesInfo get_messages_info(Td *td, DialogId dialog_id,
 
       users = std::move(messages->users_);
       chats = std::move(messages->chats_);
+      topics = std::move(messages->topics_);
       result.total_count = narrow_cast<int32>(messages->messages_.size());
       result.messages = std::move(messages->messages_);
       break;
@@ -39,8 +41,13 @@ MessagesInfo get_messages_info(Td *td, DialogId dialog_id,
     case telegram_api::messages_messagesSlice::ID: {
       auto messages = move_tl_object_as<telegram_api::messages_messagesSlice>(messages_ptr);
 
+      if (messages->search_flood_ != nullptr) {
+        LOG(ERROR) << "Receive " << to_string(messages);
+      }
+
       users = std::move(messages->users_);
       chats = std::move(messages->chats_);
+      topics = std::move(messages->topics_);
       result.total_count = messages->count_;
       result.messages = std::move(messages->messages_);
       result.next_rate = messages->next_rate_;
@@ -67,8 +74,8 @@ MessagesInfo get_messages_info(Td *td, DialogId dialog_id,
       break;
   }
 
-  td->contacts_manager_->on_get_users(std::move(users), source);
-  td->contacts_manager_->on_get_chats(std::move(chats), source);
+  td->user_manager_->on_get_users(std::move(users), source);
+  td->chat_manager_->on_get_chats(std::move(chats), source);
   td->forum_topic_manager_->on_get_forum_topic_infos(dialog_id, std::move(topics), source);
 
   return result;

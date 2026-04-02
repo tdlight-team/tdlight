@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -7,9 +7,9 @@
 #pragma once
 
 #include "td/telegram/AccentColorId.h"
-#include "td/telegram/BackgroundInfo.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
+#include "td/telegram/ThemeSettings.h"
 
 #include "td/actor/actor.h"
 
@@ -36,8 +36,7 @@ class ThemeManager final : public Actor {
 
   void reload_profile_accent_colors();
 
-  static string get_theme_parameters_json_string(const td_api::object_ptr<td_api::themeParameters> &theme,
-                                                 bool for_web_view);
+  static string get_theme_parameters_json_string(const td_api::object_ptr<td_api::themeParameters> &theme);
 
   int32 get_accent_color_id_object(AccentColorId accent_color_id,
                                    AccentColorId fallback_accent_color_id = AccentColorId()) const;
@@ -52,32 +51,13 @@ class ThemeManager final : public Actor {
   };
   DialogBoostAvailableCounts get_dialog_boost_available_count(int32 level, bool for_megagroup);
 
+  void get_unique_gift_chat_themes(const string &offset, int32 limit,
+                                   Promise<td_api::object_ptr<td_api::giftChatThemes>> &&promise);
+
   void get_current_state(vector<td_api::object_ptr<td_api::Update>> &updates) const;
 
  private:
-  // apeend-only
-  enum class BaseTheme : int32 { Classic, Day, Night, Tinted, Arctic };
-
-  struct ThemeSettings {
-    int32 accent_color = 0;
-    int32 message_accent_color = 0;
-    BackgroundInfo background_info;
-    BaseTheme base_theme = BaseTheme::Classic;
-    vector<int32> message_colors;
-    bool animate_message_colors = false;
-
-    template <class StorerT>
-    void store(StorerT &storer) const;
-
-    template <class ParserT>
-    void parse(ParserT &parser);
-  };
-
-  friend bool operator==(const ThemeSettings &lhs, const ThemeSettings &rhs);
-
-  friend bool operator!=(const ThemeSettings &lhs, const ThemeSettings &rhs);
-
-  struct ChatTheme {
+  struct EmojiChatTheme {
     string emoji;
     int64 id = 0;
     ThemeSettings light_theme;
@@ -90,9 +70,9 @@ class ThemeManager final : public Actor {
     void parse(ParserT &parser);
   };
 
-  struct ChatThemes {
+  struct EmojiChatThemes {
     int64 hash = 0;
-    vector<ChatTheme> themes;
+    vector<EmojiChatTheme> themes;
 
     template <class StorerT>
     void store(StorerT &storer) const;
@@ -135,7 +115,6 @@ class ThemeManager final : public Actor {
   };
 
   friend bool operator==(const ProfileAccentColor &lhs, const ProfileAccentColor &rhs);
-
   friend bool operator!=(const ProfileAccentColor &lhs, const ProfileAccentColor &rhs);
 
   struct ProfileAccentColors {
@@ -165,8 +144,6 @@ class ThemeManager final : public Actor {
 
   void load_profile_accent_colors();
 
-  static bool is_dark_base_theme(BaseTheme base_theme);
-
   void on_get_chat_themes(Result<telegram_api::object_ptr<telegram_api::account_Themes>> result);
 
   bool on_update_accent_colors(FlatHashMap<AccentColorId, vector<int32>, AccentColorIdHash> light_colors,
@@ -186,11 +163,9 @@ class ThemeManager final : public Actor {
 
   void on_get_profile_accent_colors(Result<telegram_api::object_ptr<telegram_api::help_PeerColors>> result);
 
-  td_api::object_ptr<td_api::themeSettings> get_theme_settings_object(const ThemeSettings &settings) const;
+  td_api::object_ptr<td_api::emojiChatTheme> get_emoji_chat_theme_object(const EmojiChatTheme &theme) const;
 
-  td_api::object_ptr<td_api::chatTheme> get_chat_theme_object(const ChatTheme &theme) const;
-
-  td_api::object_ptr<td_api::updateChatThemes> get_update_chat_themes_object() const;
+  td_api::object_ptr<td_api::updateEmojiChatThemes> get_update_emoji_chat_themes_object() const;
 
   static string get_chat_themes_database_key();
 
@@ -206,10 +181,6 @@ class ThemeManager final : public Actor {
 
   void send_update_chat_themes() const;
 
-  static BaseTheme get_base_theme(const telegram_api::object_ptr<telegram_api::BaseTheme> &base_theme);
-
-  ThemeSettings get_chat_theme_settings(telegram_api::object_ptr<telegram_api::themeSettings> settings);
-
   td_api::object_ptr<td_api::updateAccentColors> get_update_accent_colors_object() const;
 
   td_api::object_ptr<td_api::updateProfileAccentColors> get_update_profile_accent_colors_object() const;
@@ -218,7 +189,7 @@ class ThemeManager final : public Actor {
 
   void send_update_profile_accent_colors() const;
 
-  ChatThemes chat_themes_;
+  EmojiChatThemes chat_themes_;
 
   AccentColors accent_colors_;
 

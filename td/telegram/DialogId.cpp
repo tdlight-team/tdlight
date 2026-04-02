@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -22,7 +22,9 @@ DialogType DialogId::get_type() const {
   static_assert(ZERO_CHANNEL_ID + 1 == -ChatId::MAX_CHAT_ID, "");
   static_assert(
       ZERO_SECRET_CHAT_ID + std::numeric_limits<int32>::max() + 1 == ZERO_CHANNEL_ID - ChannelId::MAX_CHANNEL_ID, "");
-
+  static_assert(ZERO_CHANNEL_ID - ChannelId::MIN_MONOFORUM_CHANNEL_ID + 1 ==
+                    ZERO_SECRET_CHAT_ID + std::numeric_limits<int32>::min(),
+                "");
   if (id < 0) {
     if (-ChatId::MAX_CHAT_ID <= id) {
       return DialogType::Chat;
@@ -32,6 +34,9 @@ DialogType DialogId::get_type() const {
     }
     if (ZERO_SECRET_CHAT_ID + std::numeric_limits<int32>::min() <= id && id != ZERO_SECRET_CHAT_ID) {
       return DialogType::SecretChat;
+    }
+    if (ZERO_CHANNEL_ID - ChannelId::MAX_MONOFORUM_CHANNEL_ID <= id) {
+      return DialogType::Channel;
     }
   } else if (0 < id && id <= UserId::MAX_USER_ID) {
     return DialogType::User;
@@ -177,6 +182,22 @@ DialogId DialogId::get_message_dialog_id(const tl_object_ptr<telegram_api::Messa
 
 vector<DialogId> DialogId::get_dialog_ids(const vector<int64> &chat_ids) {
   return transform(chat_ids, [](int64 chat_id) { return DialogId(chat_id); });
+}
+
+vector<DialogId> DialogId::get_dialog_ids(const vector<UserId> &user_ids) {
+  return transform(user_ids, [](UserId user_id) { return DialogId(user_id); });
+}
+
+vector<DialogId> DialogId::get_dialog_ids(const vector<ChatId> &chat_ids) {
+  return transform(chat_ids, [](ChatId chat_id) { return DialogId(chat_id); });
+}
+
+vector<DialogId> DialogId::get_dialog_ids(const vector<ChannelId> &channel_ids) {
+  return transform(channel_ids, [](ChannelId channel_id) { return DialogId(channel_id); });
+}
+
+vector<DialogId> DialogId::get_dialog_ids(const vector<SecretChatId> &secret_chat_ids) {
+  return transform(secret_chat_ids, [](SecretChatId secret_chat_id) { return DialogId(secret_chat_id); });
 }
 
 vector<DialogId> DialogId::remove_secret_chat_dialog_ids(vector<DialogId> dialog_ids) {

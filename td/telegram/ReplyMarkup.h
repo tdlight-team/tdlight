@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -7,6 +7,7 @@
 #pragma once
 
 #include "td/telegram/DialogId.h"
+#include "td/telegram/KeyboardButtonStyle.h"
 #include "td/telegram/RequestedDialogType.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
@@ -18,8 +19,8 @@
 
 namespace td {
 
-class ContactsManager;
 class Dependencies;
+class UserManager;
 
 struct KeyboardButton {
   // append only
@@ -34,6 +35,7 @@ struct KeyboardButton {
     RequestDialog
   };
   Type type;
+  KeyboardButtonStyle style;
   string text;
   string url;                                             // WebView only
   unique_ptr<RequestedDialogType> requested_dialog_type;  // RequestDialog only
@@ -51,19 +53,15 @@ struct InlineKeyboardButton {
     UrlAuth,
     CallbackWithPassword,
     User,
-    WebView
+    WebView,
+    Copy
   };
-
-  static constexpr int64 USERS_MASK = 1;
-  static constexpr int64 BOTS_MASK = 2;
-  static constexpr int64 CHATS_MASK = 4;
-  static constexpr int64 BROADCASTS_MASK = 8;
-  static constexpr int64 FULL_MASK = USERS_MASK | BOTS_MASK | CHATS_MASK | BROADCASTS_MASK;
 
   Type type;
   int64 id = 0;    // UrlAuth: button_id or (2 * request_write_access - 1) * bot_user_id
                    // SwitchInline: mask of allowed target chats; 0 if any
   UserId user_id;  // User only
+  KeyboardButtonStyle style;
   string text;
   string forward_text;  // UrlAuth only
   string data;
@@ -86,9 +84,9 @@ struct ReplyMarkup {
 
   StringBuilder &print(StringBuilder &string_builder) const;
 
-  tl_object_ptr<telegram_api::ReplyMarkup> get_input_reply_markup(ContactsManager *contacts_manager) const;
+  tl_object_ptr<telegram_api::ReplyMarkup> get_input_reply_markup(UserManager *user_manager) const;
 
-  tl_object_ptr<td_api::ReplyMarkup> get_reply_markup_object(ContactsManager *contacts_manager) const;
+  tl_object_ptr<td_api::ReplyMarkup> get_reply_markup_object(UserManager *user_manager) const;
 
   Status check_shared_dialog(Td *td, int32 button_id, DialogId dialog_id) const;
 
@@ -103,19 +101,19 @@ StringBuilder &operator<<(StringBuilder &string_builder, const ReplyMarkup &repl
 unique_ptr<ReplyMarkup> get_reply_markup(tl_object_ptr<telegram_api::ReplyMarkup> &&reply_markup_ptr, bool is_bot,
                                          bool only_inline_keyboard, bool message_contains_mention);
 
-Result<unique_ptr<ReplyMarkup>> get_reply_markup(td_api::object_ptr<td_api::ReplyMarkup> &&reply_markup_ptr,
-                                                 bool is_bot, bool only_inline_keyboard, bool request_buttons_allowed,
-                                                 bool switch_inline_buttons_allowed);
+Result<unique_ptr<ReplyMarkup>> get_inline_reply_markup(td_api::object_ptr<td_api::ReplyMarkup> &&reply_markup_ptr,
+                                                        bool is_bot, bool switch_inline_buttons_allowed);
 
 Result<unique_ptr<ReplyMarkup>> get_reply_markup(td_api::object_ptr<td_api::ReplyMarkup> &&reply_markup_ptr,
-                                                 DialogId dialog_id, bool is_bot, bool is_anonymous);
+                                                 DialogType dialog_type, bool is_admined_monoforum, bool is_bot,
+                                                 bool is_anonymous);
 
 unique_ptr<ReplyMarkup> dup_reply_markup(const unique_ptr<ReplyMarkup> &reply_markup);
 
-tl_object_ptr<telegram_api::ReplyMarkup> get_input_reply_markup(ContactsManager *contacts_manager,
+tl_object_ptr<telegram_api::ReplyMarkup> get_input_reply_markup(UserManager *user_manager,
                                                                 const unique_ptr<ReplyMarkup> &reply_markup);
 
-tl_object_ptr<td_api::ReplyMarkup> get_reply_markup_object(ContactsManager *contacts_manager,
+tl_object_ptr<td_api::ReplyMarkup> get_reply_markup_object(UserManager *user_manager,
                                                            const unique_ptr<ReplyMarkup> &reply_markup);
 
 void add_reply_markup_dependencies(Dependencies &dependencies, const ReplyMarkup *reply_markup);

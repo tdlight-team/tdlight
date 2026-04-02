@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -13,6 +13,8 @@
 #include "td/telegram/files/FileId.h"
 #include "td/telegram/files/FileManager.h"
 #include "td/telegram/files/FileType.h"
+#include "td/telegram/GroupCallManager.h"
+#include "td/telegram/InputGroupCallId.h"
 #include "td/telegram/Photo.h"
 #include "td/telegram/Photo.hpp"
 #include "td/telegram/PhotoSize.h"
@@ -58,7 +60,7 @@ class StoryContentVideo final : public StoryContent {
 
 class StoryContentUnsupported final : public StoryContent {
  public:
-  static constexpr int32 CURRENT_VERSION = 1;
+  static constexpr int32 CURRENT_VERSION = 2;
   int32 version_ = CURRENT_VERSION;
 
   StoryContentUnsupported() = default;
@@ -67,6 +69,21 @@ class StoryContentUnsupported final : public StoryContent {
 
   StoryContentType get_type() const final {
     return StoryContentType::Unsupported;
+  }
+};
+
+class StoryContentLiveStream final : public StoryContent {
+ public:
+  InputGroupCallId input_group_call_id_;
+  bool is_rtmp_stream_ = false;
+
+  StoryContentLiveStream() = default;
+  StoryContentLiveStream(InputGroupCallId input_group_call_id, bool is_rtmp_stream)
+      : input_group_call_id_(input_group_call_id), is_rtmp_stream_(is_rtmp_stream) {
+  }
+
+  StoryContentType get_type() const final {
+    return StoryContentType::LiveStream;
   }
 };
 
@@ -103,6 +120,14 @@ static void store(const StoryContent *content, StorerT &storer) {
     case StoryContentType::Unsupported: {
       const auto *story_content = static_cast<const StoryContentUnsupported *>(content);
       store(story_content->version_, storer);
+      break;
+    }
+    case StoryContentType::LiveStream: {
+      const auto *story_content = static_cast<const StoryContentLiveStream *>(content);
+      BEGIN_STORE_FLAGS();
+      STORE_FLAG(story_content->is_rtmp_stream_);
+      END_STORE_FLAGS();
+      store(story_content->input_group_call_id_, storer);
       break;
     }
     default:
@@ -151,6 +176,15 @@ static void parse(unique_ptr<StoryContent> &content, ParserT &parser) {
       content = std::move(story_content);
       break;
     }
+    case StoryContentType::LiveStream: {
+      auto story_content = make_unique<StoryContentLiveStream>();
+      BEGIN_PARSE_FLAGS();
+      PARSE_FLAG(story_content->is_rtmp_stream_);
+      END_PARSE_FLAGS();
+      parse(story_content->input_group_call_id_, parser);
+      content = std::move(story_content);
+      break;
+    }
     default:
       is_bad = true;
   }
@@ -180,6 +214,8 @@ void add_story_content_dependencies(Dependencies &dependencies, const StoryConte
       break;
     case StoryContentType::Unsupported:
       break;
+    case StoryContentType::LiveStream:
+      break;
     default:
       UNREACHABLE();
       break;
@@ -187,13 +223,12 @@ void add_story_content_dependencies(Dependencies &dependencies, const StoryConte
 }
 
 unique_ptr<StoryContent> get_story_content(Td *td, tl_object_ptr<telegram_api::MessageMedia> &&media_ptr,
-                                           DialogId owner_dialog_id) {
+                                           DialogId owner_dialog_id, bool is_bot_preview) {
   CHECK(media_ptr != nullptr);
   switch (media_ptr->get_id()) {
     case telegram_api::messageMediaPhoto::ID: {
-      auto media = move_tl_object_as<telegram_api::messageMediaPhoto>(media_ptr);
-      if (media->photo_ == nullptr || (media->flags_ & telegram_api::messageMediaPhoto::TTL_SECONDS_MASK) != 0 ||
-          media->spoiler_) {
+      auto media = telegram_api::move_object_as<telegram_api::messageMediaPhoto>(media_ptr);
+      if (media->photo_ == nullptr || media->ttl_seconds_ != 0 || media->spoiler_) {
         LOG(ERROR) << "Receive a story with content " << to_string(media);
         break;
       }
@@ -206,9 +241,8 @@ unique_ptr<StoryContent> get_story_content(Td *td, tl_object_ptr<telegram_api::M
       return make_unique<StoryContentPhoto>(std::move(photo));
     }
     case telegram_api::messageMediaDocument::ID: {
-      auto media = move_tl_object_as<telegram_api::messageMediaDocument>(media_ptr);
-      if (media->document_ == nullptr || (media->flags_ & telegram_api::messageMediaDocument::TTL_SECONDS_MASK) != 0 ||
-          media->spoiler_) {
+      auto media = telegram_api::move_object_as<telegram_api::messageMediaDocument>(media_ptr);
+      if (media->document_ == nullptr || media->ttl_seconds_ != 0 || media->spoiler_) {
         LOG(ERROR) << "Receive a story with content " << to_string(media);
         break;
       }
@@ -221,8 +255,8 @@ unique_ptr<StoryContent> get_story_content(Td *td, tl_object_ptr<telegram_api::M
       }
       CHECK(document_id == telegram_api::document::ID);
       auto parsed_document = td->documents_manager_->on_get_document(
-          move_tl_object_as<telegram_api::document>(document_ptr), owner_dialog_id, nullptr, Document::Type::Video,
-          DocumentsManager::Subtype::Story);
+          telegram_api::move_object_as<telegram_api::document>(document_ptr), owner_dialog_id, false, nullptr,
+          Document::Type::Video, DocumentsManager::Subtype::Story);
       if (parsed_document.empty() || parsed_document.type != Document::Type::Video) {
         LOG(ERROR) << "Receive a story with " << parsed_document;
         break;
@@ -230,18 +264,18 @@ unique_ptr<StoryContent> get_story_content(Td *td, tl_object_ptr<telegram_api::M
       CHECK(parsed_document.file_id.is_valid());
 
       FileId alt_file_id;
-      if (media->alt_document_ != nullptr) {
-        auto alt_document_ptr = std::move(media->alt_document_);
+      if (media->alt_documents_.size() == 1u) {
+        auto alt_document_ptr = std::move(media->alt_documents_[0]);
         int32 alt_document_id = alt_document_ptr->get_id();
         if (alt_document_id == telegram_api::documentEmpty::ID) {
           LOG(ERROR) << "Receive alternative " << to_string(alt_document_ptr);
         } else {
           CHECK(alt_document_id == telegram_api::document::ID);
           auto parsed_alt_document = td->documents_manager_->on_get_document(
-              move_tl_object_as<telegram_api::document>(alt_document_ptr), owner_dialog_id, nullptr,
+              telegram_api::move_object_as<telegram_api::document>(alt_document_ptr), owner_dialog_id, false, nullptr,
               Document::Type::Video, DocumentsManager::Subtype::Story);
           if (parsed_alt_document.empty() || parsed_alt_document.type != Document::Type::Video) {
-            LOG(ERROR) << "Receive alternative " << to_string(alt_document_ptr);
+            LOG(ERROR) << "Receive invalid alternative document " << parsed_alt_document;
           } else {
             alt_file_id = parsed_alt_document.file_id;
           }
@@ -249,6 +283,13 @@ unique_ptr<StoryContent> get_story_content(Td *td, tl_object_ptr<telegram_api::M
       }
 
       return make_unique<StoryContentVideo>(parsed_document.file_id, alt_file_id);
+    }
+    case telegram_api::messageMediaVideoStream::ID: {
+      if (is_bot_preview) {
+        return nullptr;
+      }
+      auto media = telegram_api::move_object_as<telegram_api::messageMediaVideoStream>(media_ptr);
+      return make_unique<StoryContentLiveStream>(InputGroupCallId(media->call_), media->rtmp_stream_);
     }
     case telegram_api::messageMediaUnsupported::ID:
       return make_unique<StoryContentUnsupported>();
@@ -282,18 +323,22 @@ Result<unique_ptr<StoryContent>> get_input_story_content(
       auto input_story = static_cast<const td_api::inputStoryContentVideo *>(input_story_content.get());
       TRY_RESULT(file_id, td->file_manager_->get_input_file_id(FileType::Video, input_story->video_, owner_dialog_id,
                                                                false, false));
-      file_id =
-          td->file_manager_->copy_file_id(file_id, FileType::VideoStory, owner_dialog_id, "get_input_story_content");
       if (input_story->duration_ < 0 || input_story->duration_ > 60.0) {
         return Status::Error(400, "Invalid video duration specified");
       }
+      if (input_story->cover_frame_timestamp_ < 0.0) {
+        return Status::Error(400, "Wrong cover timestamp specified");
+      }
+      file_id =
+          td->file_manager_->copy_file_id(file_id, FileType::VideoStory, owner_dialog_id, "get_input_story_content");
       auto sticker_file_ids =
           td->stickers_manager_->get_attached_sticker_file_ids(input_story->added_sticker_file_ids_);
       bool has_stickers = !sticker_file_ids.empty();
       td->videos_manager_->create_video(file_id, string(), PhotoSize(), AnimationSize(), has_stickers,
                                         std::move(sticker_file_ids), "story.mp4", "video/mp4",
                                         static_cast<int32>(std::ceil(input_story->duration_)), input_story->duration_,
-                                        get_dimensions(720, 1280, nullptr), true, input_story->is_animation_, 0, false);
+                                        get_dimensions(720, 1280, nullptr), true, input_story->is_animation_, 0,
+                                        input_story->cover_frame_timestamp_, string(), false);
 
       return make_unique<StoryContentVideo>(file_id, FileId());
     }
@@ -312,9 +357,28 @@ telegram_api::object_ptr<telegram_api::InputMedia> get_story_content_input_media
     }
     case StoryContentType::Video: {
       const auto *story_content = static_cast<const StoryContentVideo *>(content);
-      return td->videos_manager_->get_input_media(story_content->file_id_, std::move(input_file), nullptr, 0, false);
+      return td->videos_manager_->get_input_media(story_content->file_id_, std::move(input_file), nullptr, Photo(), 0,
+                                                  0, false);
     }
     case StoryContentType::Unsupported:
+    case StoryContentType::LiveStream:
+    default:
+      UNREACHABLE();
+      return nullptr;
+  }
+}
+
+telegram_api::object_ptr<telegram_api::InputMedia> get_story_content_document_input_media(Td *td,
+                                                                                          const StoryContent *content,
+                                                                                          double main_frame_timestamp) {
+  switch (content->get_type()) {
+    case StoryContentType::Video: {
+      const auto *story_content = static_cast<const StoryContentVideo *>(content);
+      return td->videos_manager_->get_story_document_input_media(story_content->file_id_, main_frame_timestamp);
+    }
+    case StoryContentType::Photo:
+    case StoryContentType::Unsupported:
+    case StoryContentType::LiveStream:
     default:
       UNREACHABLE();
       return nullptr;
@@ -354,6 +418,14 @@ void compare_story_contents(const StoryContent *old_content, const StoryContent 
       }
       break;
     }
+    case StoryContentType::LiveStream: {
+      const auto *old_ = static_cast<const StoryContentLiveStream *>(old_content);
+      const auto *new_ = static_cast<const StoryContentLiveStream *>(new_content);
+      if (old_->input_group_call_id_ != new_->input_group_call_id_ || old_->is_rtmp_stream_ != new_->is_rtmp_stream_) {
+        need_update = true;
+      }
+      break;
+    }
     default:
       UNREACHABLE();
       break;
@@ -388,6 +460,14 @@ void merge_story_contents(Td *td, const StoryContent *old_content, StoryContent 
       }
       break;
     }
+    case StoryContentType::LiveStream: {
+      const auto *old_ = static_cast<const StoryContentLiveStream *>(old_content);
+      const auto *new_ = static_cast<const StoryContentLiveStream *>(new_content);
+      if (old_->input_group_call_id_ != new_->input_group_call_id_ || old_->is_rtmp_stream_ != new_->is_rtmp_stream_) {
+        need_update = true;
+      }
+      break;
+    }
     default:
       UNREACHABLE();
       break;
@@ -411,64 +491,18 @@ unique_ptr<StoryContent> copy_story_content(const StoryContent *content) {
       const auto *story_content = static_cast<const StoryContentUnsupported *>(content);
       return make_unique<StoryContentUnsupported>(story_content->version_);
     }
+    case StoryContentType::LiveStream: {
+      const auto *story_content = static_cast<const StoryContentLiveStream *>(content);
+      return make_unique<StoryContentLiveStream>(story_content->input_group_call_id_, story_content->is_rtmp_stream_);
+    }
     default:
       UNREACHABLE();
       return nullptr;
   }
 }
 
-unique_ptr<StoryContent> dup_story_content(Td *td, const StoryContent *content) {
-  if (content == nullptr) {
-    return nullptr;
-  }
-
-  auto fix_file_id = [file_manager = td->file_manager_.get()](FileId file_id) {
-    return file_manager->dup_file_id(file_id, "dup_story_content");
-  };
-
-  switch (content->get_type()) {
-    case StoryContentType::Photo: {
-      const auto *old_content = static_cast<const StoryContentPhoto *>(content);
-      // Find 'i' or largest
-      PhotoSize photo_size;
-      for (const auto &size : old_content->photo_.photos) {
-        if (size.type == 'i') {
-          photo_size = size;
-        }
-      }
-      if (photo_size.type == 0) {
-        for (const auto &size : old_content->photo_.photos) {
-          if (photo_size.type == 0 || photo_size < size) {
-            photo_size = size;
-          }
-        }
-      }
-      photo_size.type = 'i';
-      photo_size.file_id = fix_file_id(photo_size.file_id);
-
-      auto result = make_unique<StoryContentPhoto>(Photo(old_content->photo_));
-
-      result->photo_.photos.clear();
-      result->photo_.animations.clear();
-      result->photo_.sticker_photo_size = nullptr;
-
-      result->photo_.photos.push_back(std::move(photo_size));
-      return std::move(result);
-    }
-    case StoryContentType::Video: {
-      const auto *old_content = static_cast<const StoryContentVideo *>(content);
-      return make_unique<StoryContentVideo>(
-          td->videos_manager_->dup_video(fix_file_id(old_content->file_id_), old_content->file_id_), FileId());
-    }
-    case StoryContentType::Unsupported:
-      return nullptr;
-    default:
-      UNREACHABLE();
-      return nullptr;
-  }
-}
-
-td_api::object_ptr<td_api::StoryContent> get_story_content_object(Td *td, const StoryContent *content) {
+td_api::object_ptr<td_api::StoryContent> get_story_content_object(Td *td, const StoryContent *content,
+                                                                  DialogId owner_dialog_id) {
   CHECK(content != nullptr);
   switch (content->get_type()) {
     case StoryContentType::Photo: {
@@ -487,19 +521,26 @@ td_api::object_ptr<td_api::StoryContent> get_story_content_object(Td *td, const 
     }
     case StoryContentType::Unsupported:
       return td_api::make_object<td_api::storyContentUnsupported>();
+    case StoryContentType::LiveStream: {
+      const auto *s = static_cast<const StoryContentLiveStream *>(content);
+      return td_api::make_object<td_api::storyContentLive>(
+          td->group_call_manager_->get_group_call_id(s->input_group_call_id_, owner_dialog_id, true).get(),
+          s->is_rtmp_stream_);
+    }
     default:
       UNREACHABLE();
       return nullptr;
   }
 }
 
-FileId get_story_content_any_file_id(const Td *td, const StoryContent *content) {
+FileId get_story_content_any_file_id(const StoryContent *content) {
   switch (content->get_type()) {
     case StoryContentType::Photo:
       return get_photo_any_file_id(static_cast<const StoryContentPhoto *>(content)->photo_);
     case StoryContentType::Video:
       return static_cast<const StoryContentVideo *>(content)->file_id_;
     case StoryContentType::Unsupported:
+    case StoryContentType::LiveStream:
     default:
       return {};
   }
@@ -517,6 +558,7 @@ vector<FileId> get_story_content_file_ids(const Td *td, const StoryContent *cont
       return result;
     }
     case StoryContentType::Unsupported:
+    case StoryContentType::LiveStream:
     default:
       return {};
   }

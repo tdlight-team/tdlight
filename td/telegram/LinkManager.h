@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -68,6 +68,8 @@ class LinkManager final : public Actor {
   void update_autologin_domains(vector<string> autologin_domains, vector<string> url_auth_domains,
                                 vector<string> whitelisted_domains);
 
+  void get_recent_me_urls(const string &referrer, Promise<td_api::object_ptr<td_api::tMeUrls>> &&promise);
+
   void get_deep_link_info(Slice link, Promise<td_api::object_ptr<td_api::deepLinkInfo>> &&promise);
 
   void get_external_link_info(string &&link, Promise<td_api::object_ptr<td_api::LoginUrlInfo>> &&promise);
@@ -81,8 +83,22 @@ class LinkManager final : public Actor {
   void get_link_login_url(const string &url, bool allow_write_access,
                           Promise<td_api::object_ptr<td_api::httpUrl>> &&promise);
 
+  void get_oauth_link_info(string &&link, const string &in_app_origin,
+                           Promise<td_api::object_ptr<td_api::oauthLinkInfo>> &&promise);
+
+  void check_oauth_request_match_code(const string &url, const string &match_code, Promise<Unit> &&promise);
+
+  void accept_oauth_request(const string &url, const string &match_code, bool allow_write_access,
+                            bool allow_phone_number_access, Promise<td_api::object_ptr<td_api::httpUrl>> &&promise);
+
+  void decline_oauth_request(const string &url, Promise<Unit> &&promise);
+
   static Result<string> get_background_url(const string &name,
                                            td_api::object_ptr<td_api::BackgroundType> background_type);
+
+  static td_api::object_ptr<td_api::BackgroundType> get_background_type_object(const string &link, bool is_pattern);
+
+  static bool has_video_chat_invite_hash(Slice link);
 
   static string get_dialog_filter_invite_link_slug(Slice invite_link);
 
@@ -92,21 +108,29 @@ class LinkManager final : public Actor {
 
   static string get_dialog_invite_link(Slice invite_hash, bool is_internal);
 
+  static string get_group_call_invite_link_slug(Slice invite_link);
+
+  static string get_group_call_invite_link(Slice slug, bool is_internal);
+
   static string get_instant_view_link_url(Slice link);
 
   static string get_instant_view_link_rhash(Slice link);
 
   static string get_instant_view_link(Slice url, Slice rhash);
 
-  static string get_public_dialog_link(Slice username, bool is_internal);
-
-  static Result<string> get_proxy_link(const Proxy &proxy, bool is_internal);
+  static string get_public_dialog_link(Slice username, Slice draft_text, bool open_profile, bool is_internal);
 
   static UserId get_link_user_id(Slice url);
 
   static string get_t_me_url();
 
   static Result<CustomEmojiId> get_link_custom_emoji_id(Slice url);
+
+  struct DateFormat {
+    int32 date_ = 0;
+    string format_;
+  };
+  static Result<DateFormat> get_link_date_format(Slice url);
 
   static Result<DialogBoostLinkInfo> get_dialog_boost_link_info(Slice url);
 
@@ -117,48 +141,60 @@ class LinkManager final : public Actor {
 
   void tear_down() final;
 
-  class InternalLinkActiveSessions;
   class InternalLinkAttachMenuBot;
   class InternalLinkAuthenticationCode;
   class InternalLinkBackground;
   class InternalLinkBotAddToChannel;
   class InternalLinkBotStart;
   class InternalLinkBotStartInGroup;
-  class InternalLinkChangePhoneNumber;
+  class InternalLinkBusinessChat;
+  class InternalLinkBuyStars;
+  class InternalLinkCalls;
   class InternalLinkConfirmPhone;
-  class InternalLinkDefaultMessageAutoDeleteTimerSettings;
+  class InternalLinkContacts;
   class InternalLinkDialogBoost;
   class InternalLinkDialogFolderInvite;
-  class InternalLinkDialogFolderSettings;
   class InternalLinkDialogInvite;
-  class InternalLinkEditProfileSettings;
+  class InternalLinkDialogReferralProgram;
+  class InternalLinkDialogSelection;
   class InternalLinkGame;
+  class InternalLinkGiftAuction;
+  class InternalLinkGroupCall;
   class InternalLinkInstantView;
   class InternalLinkInvoice;
   class InternalLinkLanguage;
-  class InternalLinkLanguageSettings;
+  class InternalLinkLiveStory;
+  class InternalLinkMainWebApp;
   class InternalLinkMessage;
   class InternalLinkMessageDraft;
+  class InternalLinkMonoforum;
+  class InternalLinkMyProfile;
+  class InternalLinkNewChannelChat;
+  class InternalLinkNewGroupChat;
+  class InternalLinkNewPrivateChat;
+  class InternalLinkOauth;
   class InternalLinkPassportDataRequest;
+  class InternalLinkPostStory;
   class InternalLinkPremiumFeatures;
   class InternalLinkPremiumGift;
   class InternalLinkPremiumGiftCode;
-  class InternalLinkPrivacyAndSecuritySettings;
   class InternalLinkProxy;
   class InternalLinkPublicDialog;
   class InternalLinkQrCodeAuthentication;
   class InternalLinkRestorePurchases;
+  class InternalLinkSavedMessages;
+  class InternalLinkSearch;
   class InternalLinkSettings;
-  class InternalLinkSideMenuBot;
   class InternalLinkStickerSet;
+  class InternalLinkStarGiftCollection;
   class InternalLinkStory;
+  class InternalLinkStoryAlbum;
   class InternalLinkTheme;
-  class InternalLinkThemeSettings;
   class InternalLinkUnknownDeepLink;
-  class InternalLinkUnsupportedProxy;
+  class InternalLinkUpgradedGift;
   class InternalLinkUserPhoneNumber;
   class InternalLinkUserToken;
-  class InternalLinkVoiceChat;
+  class InternalLinkVideoChat;
   class InternalLinkWebApp;
 
   enum class LinkType : int32 { External, TMe, Tg, Telegraph };
@@ -182,6 +218,10 @@ class LinkManager final : public Actor {
   static Result<string> get_internal_link_impl(const td_api::InternalLinkType *type_ptr, bool is_internal);
 
   static Result<string> check_link_impl(Slice link, bool http_only, bool https_only);
+
+  static Result<string> get_proxy_link(const Proxy &proxy, bool is_internal);
+
+  static Result<Slice> check_tg_url_host(Slice url, Slice host);
 
   Td *td_;
   ActorShared<> parent_;

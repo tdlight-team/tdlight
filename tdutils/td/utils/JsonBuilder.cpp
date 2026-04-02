@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -540,6 +540,13 @@ Slice JsonValue::get_type_name(Type type) {
       UNREACHABLE();
       return Slice("Unknown");
   }
+}
+
+JsonObject::JsonObject(vector<std::pair<Slice, JsonValue>> &&field_values) : field_values_(std::move(field_values)) {
+}
+
+size_t JsonObject::field_count() const {
+  return field_values_.size();
 }
 
 JsonValue JsonObject::extract_field(Slice name) {

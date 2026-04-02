@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -10,6 +10,7 @@
 #include "td/utils/common.h"
 #include "td/utils/invoke.h"
 #include "td/utils/MovableValue.h"
+#include "td/utils/Slice.h"
 #include "td/utils/Status.h"
 
 #include <tuple>
@@ -31,9 +32,11 @@ class PromiseInterface {
   virtual void set_value(T &&value) {
     set_result(std::move(value));
   }
+
   virtual void set_error(Status &&error) {
     set_result(std::move(error));
   }
+
   virtual void set_result(Result<T> &&result) {
     if (result.is_ok()) {
       set_value(result.move_as_ok());
@@ -45,6 +48,7 @@ class PromiseInterface {
   virtual bool is_cancellable() const {
     return false;
   }
+
   virtual bool is_canceled() const {
     return false;
   }
@@ -94,7 +98,7 @@ class LambdaPromise : public PromiseInterface<ValueT> {
 
  public:
   void set_value(ValueT &&value) override {
-    CHECK_IMPL(state_.get() == State::Ready, file_, line_);
+    CHECK(state_.get() == State::Ready);
     do_ok(std::move(value));
     state_ = State::Complete;
   }
@@ -105,6 +109,7 @@ class LambdaPromise : public PromiseInterface<ValueT> {
       state_ = State::Complete;
     }
   }
+
   LambdaPromise(const LambdaPromise &) = delete;
   LambdaPromise &operator=(const LambdaPromise &) = delete;
   LambdaPromise(LambdaPromise &&) = default;
@@ -116,15 +121,12 @@ class LambdaPromise : public PromiseInterface<ValueT> {
   }
 
   template <class FromT>
-  LambdaPromise(const char *file, int line, FromT &&func)
-      : func_(std::forward<FromT>(func)), state_(State::Ready), file_(file), line_(line) {
+  LambdaPromise(FromT &&func) : func_(std::forward<FromT>(func)), state_(State::Ready) {
   }
 
  private:
   FunctionT func_;
   MovableValue<State> state_{State::Empty};
-  const char *file_ = "";
-  int line_ = 0;
 
   template <class F = FunctionT>
   std::enable_if_t<is_callable<F, Result<ValueT>>::value, void> do_error(Status &&status) {
@@ -161,12 +163,11 @@ struct is_promise_interface_ptr<unique_ptr<U>> : std::true_type {};
 
 template <class T = void, class F = void, std::enable_if_t<std::is_same<T, void>::value, bool> has_t = false>
 auto lambda_promise(F &&f) {
-  return LambdaPromise<drop_result_t<get_arg_t<std::decay_t<F>>>, std::decay_t<F>>(__FILE__, __LINE__,
-                                                                                   std::forward<F>(f));
+  return LambdaPromise<drop_result_t<get_arg_t<std::decay_t<F>>>, std::decay_t<F>>(std::forward<F>(f));
 }
 template <class T = void, class F = void, std::enable_if_t<!std::is_same<T, void>::value, bool> has_t = true>
 auto lambda_promise(F &&f) {
-  return LambdaPromise<T, std::decay_t<F>>(__FILE__, __LINE__, std::forward<F>(f));
+  return LambdaPromise<T, std::decay_t<F>>(std::forward<F>(f));
 }
 
 template <class T, class F,
@@ -205,6 +206,7 @@ class Promise {
     promise_->set_value(std::move(value));
     promise_.reset();
   }
+
   void set_error(Status &&error) {
     if (!promise_) {
       return;
@@ -212,6 +214,15 @@ class Promise {
     promise_->set_error(std::move(error));
     promise_.reset();
   }
+
+  void set_error(int err, Slice message) {
+    set_error(Status::Error(err, message));
+  }
+
+  void set_error(Slice message) {
+    set_error(Status::Error(message));
+  }
+
   void set_result(Result<T> &&result) {
     if (!promise_) {
       return;
@@ -219,21 +230,25 @@ class Promise {
     promise_->set_result(std::move(result));
     promise_.reset();
   }
+
   void reset() {
     promise_.reset();
   }
+
   bool is_cancellable() const {
     if (!promise_) {
       return false;
     }
     return promise_->is_cancellable();
   }
+
   bool is_canceled() const {
     if (!promise_) {
       return false;
     }
     return promise_->is_canceled();
   }
+
   unique_ptr<PromiseInterface<T>> release() {
     return std::move(promise_);
   }
@@ -329,18 +344,15 @@ class JoinPromise final : public PromiseInterface<Unit> {
 class PromiseCreator {
  public:
   template <class OkT, class ArgT = detail::drop_result_t<detail::get_arg_t<OkT>>>
-  static Promise<ArgT> lambda_impl(const char *file, int line, OkT &&ok) {
-    return Promise<ArgT>(
-        td::make_unique<detail::LambdaPromise<ArgT, std::decay_t<OkT>>>(file, line, std::forward<OkT>(ok)));
+  static Promise<ArgT> lambda(OkT &&ok) {
+    return Promise<ArgT>(td::make_unique<detail::LambdaPromise<ArgT, std::decay_t<OkT>>>(std::forward<OkT>(ok)));
   }
-#define lambda(...) lambda_impl(__FILE__, __LINE__, __VA_ARGS__)
 
   template <class OkT, class ArgT = detail::drop_result_t<detail::get_arg_t<OkT>>>
-  static auto cancellable_lambda_impl(const char *file, int line, CancellationToken cancellation_token, OkT &&ok) {
+  static auto cancellable_lambda(CancellationToken cancellation_token, OkT &&ok) {
     return Promise<ArgT>(td::make_unique<detail::CancellablePromise<detail::LambdaPromise<ArgT, std::decay_t<OkT>>>>(
-        std::move(cancellation_token), file, line, std::forward<OkT>(ok)));
+        std::move(cancellation_token), std::forward<OkT>(ok)));
   }
-#define cancellable_lambda(...) cancellable_lambda_impl(__FILE__, __LINE__, __VA_ARGS__)
 
   template <class... ArgsT>
   static Promise<> join(ArgsT &&...args) {
@@ -375,6 +387,16 @@ void fail_promises(vector<Promise<T>> &promises, Status &&error) {
     }
   }
   moved_promises[size].set_error(std::move(error));
+}
+
+template <class T>
+void fail_promise_map(T &promise_map, Status &&error) {
+  while (!promise_map.empty()) {
+    auto it = promise_map.begin();
+    auto promises = std::move(it->second);
+    promise_map.erase(it);
+    fail_promises(promises, error.clone());
+  }
 }
 
 }  // namespace td

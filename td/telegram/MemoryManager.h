@@ -47,7 +47,7 @@ class MemoryManager : public Actor {
  public:
   MemoryManager(Td *td, ActorShared<> parent);
 
-  void get_memory_stats(bool full, Promise<MemoryStats> promise) const;
+  void get_memory_stats(bool full, Promise<MemoryStats> promise);
 
   void get_current_state(vector<td_api::object_ptr<td_api::Update>> &updates) const;
 

@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -18,26 +18,24 @@ namespace td {
 
 template <class StorerT>
 void MessageExtendedMedia::store(StorerT &storer) const {
-  bool has_caption = !caption_.text.empty();
   bool has_unsupported_version = unsupported_version_ != 0;
   bool has_duration = duration_ != 0;
   bool has_dimensions = dimensions_.width != 0 || dimensions_.height != 0;
   bool has_minithumbnail = !minithumbnail_.empty();
   bool has_photo = !photo_.is_empty();
   bool has_video = video_file_id_.is_valid();
+  bool has_start_timestamp = start_timestamp_ != 0;
   BEGIN_STORE_FLAGS();
-  STORE_FLAG(has_caption);
+  STORE_FLAG(false);  // has_caption
   STORE_FLAG(has_unsupported_version);
   STORE_FLAG(has_duration);
   STORE_FLAG(has_dimensions);
   STORE_FLAG(has_minithumbnail);
   STORE_FLAG(has_photo);
   STORE_FLAG(has_video);
+  STORE_FLAG(has_start_timestamp);
   END_STORE_FLAGS();
   td::store(type_, storer);
-  if (has_caption) {
-    td::store(caption_, storer);
-  }
   if (has_unsupported_version) {
     td::store(unsupported_version_, storer);
   }
@@ -57,6 +55,9 @@ void MessageExtendedMedia::store(StorerT &storer) const {
     Td *td = storer.context()->td().get_actor_unsafe();
     td->videos_manager_->store_video(video_file_id_, storer);
   }
+  if (has_start_timestamp) {
+    td::store(start_timestamp_, storer);
+  }
 }
 
 template <class ParserT>
@@ -68,6 +69,7 @@ void MessageExtendedMedia::parse(ParserT &parser) {
   bool has_minithumbnail;
   bool has_photo;
   bool has_video;
+  bool has_start_timestamp;
   BEGIN_PARSE_FLAGS();
   PARSE_FLAG(has_caption);
   PARSE_FLAG(has_unsupported_version);
@@ -76,10 +78,12 @@ void MessageExtendedMedia::parse(ParserT &parser) {
   PARSE_FLAG(has_minithumbnail);
   PARSE_FLAG(has_photo);
   PARSE_FLAG(has_video);
+  PARSE_FLAG(has_start_timestamp);
   END_PARSE_FLAGS();
   td::parse(type_, parser);
   if (has_caption) {
-    td::parse(caption_, parser);
+    FormattedText caption;
+    td::parse(caption, parser);
   }
   if (has_unsupported_version) {
     td::parse(unsupported_version_, parser);
@@ -97,14 +101,27 @@ void MessageExtendedMedia::parse(ParserT &parser) {
   if (has_photo) {
     td::parse(photo_, parser);
     is_bad = photo_.is_bad();
+  } else if (type_ == Type::Photo) {
+    is_bad = true;
   }
   if (has_video) {
     Td *td = parser.context()->td().get_actor_unsafe();
     video_file_id_ = td->videos_manager_->parse_video(parser);
     is_bad = !video_file_id_.is_valid();
+    if (type_ != Type::Video) {
+      is_bad = true;
+    }
+  } else if (type_ == Type::Video) {
+    is_bad = true;
   }
-  if (is_bad) {
-    LOG(ERROR) << "Failed to parse MessageExtendedMedia";
+  if (has_start_timestamp) {
+    td::parse(start_timestamp_, parser);
+  }
+
+  if (is_bad || has_caption) {
+    if (is_bad) {
+      LOG(ERROR) << "Failed to parse MessageExtendedMedia";
+    }
     photo_ = Photo();
     video_file_id_ = FileId();
     type_ = Type::Unsupported;

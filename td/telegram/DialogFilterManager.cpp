@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -8,7 +8,7 @@
 
 #include "td/telegram/AccessRights.h"
 #include "td/telegram/AuthManager.h"
-#include "td/telegram/ContactsManager.h"
+#include "td/telegram/ChatManager.h"
 #include "td/telegram/DialogFilter.h"
 #include "td/telegram/DialogFilter.hpp"
 #include "td/telegram/DialogFilterInviteLink.h"
@@ -17,12 +17,15 @@
 #include "td/telegram/Global.h"
 #include "td/telegram/LinkManager.h"
 #include "td/telegram/logevent/LogEvent.h"
+#include "td/telegram/MessageEntity.h"
+#include "td/telegram/MessageEntity.hpp"
 #include "td/telegram/MessagesManager.h"
 #include "td/telegram/OptionManager.h"
 #include "td/telegram/Td.h"
 #include "td/telegram/TdDb.h"
 #include "td/telegram/telegram_api.h"
 #include "td/telegram/UpdatesManager.h"
+#include "td/telegram/UserManager.h"
 #include "td/telegram/Version.h"
 
 #include "td/actor/MultiPromise.h"
@@ -40,10 +43,10 @@
 namespace td {
 
 class GetDialogFiltersQuery final : public Td::ResultHandler {
-  Promise<vector<tl_object_ptr<telegram_api::DialogFilter>>> promise_;
+  Promise<telegram_api::object_ptr<telegram_api::messages_dialogFilters>> promise_;
 
  public:
-  explicit GetDialogFiltersQuery(Promise<vector<tl_object_ptr<telegram_api::DialogFilter>>> &&promise)
+  explicit GetDialogFiltersQuery(Promise<telegram_api::object_ptr<telegram_api::messages_dialogFilters>> &&promise)
       : promise_(std::move(promise)) {
   }
 
@@ -127,6 +130,32 @@ class UpdateDialogFiltersOrderQuery final : public Td::ResultHandler {
   }
 };
 
+class ToggleDialogFilterTagsQuery final : public Td::ResultHandler {
+  Promise<Unit> promise_;
+
+ public:
+  explicit ToggleDialogFilterTagsQuery(Promise<Unit> &&promise) : promise_(std::move(promise)) {
+  }
+
+  void send(bool are_tags_enabled) {
+    send_query(G()->net_query_creator().create(telegram_api::messages_toggleDialogFilterTags(are_tags_enabled)));
+  }
+
+  void on_result(BufferSlice packet) final {
+    auto result_ptr = fetch_result<telegram_api::messages_toggleDialogFilterTags>(packet);
+    if (result_ptr.is_error()) {
+      return on_error(result_ptr.move_as_error());
+    }
+
+    LOG(INFO) << "Receive result for ToggleDialogFilterTagsQuery: " << result_ptr.ok();
+    promise_.set_value(Unit());
+  }
+
+  void on_error(Status status) final {
+    promise_.set_error(std::move(status));
+  }
+};
+
 class ExportChatlistInviteQuery final : public Td::ResultHandler {
   Promise<td_api::object_ptr<td_api::chatFolderInviteLink>> promise_;
 
@@ -181,8 +210,8 @@ class GetExportedChatlistInvitesQuery final : public Td::ResultHandler {
 
     auto ptr = result_ptr.move_as_ok();
     LOG(INFO) << "Receive result for GetExportedChatlistInvitesQuery: " << to_string(ptr);
-    td_->contacts_manager_->on_get_users(std::move(ptr->users_), "GetExportedChatlistInvitesQuery");
-    td_->contacts_manager_->on_get_chats(std::move(ptr->chats_), "GetExportedChatlistInvitesQuery");
+    td_->user_manager_->on_get_users(std::move(ptr->users_), "GetExportedChatlistInvitesQuery");
+    td_->chat_manager_->on_get_chats(std::move(ptr->chats_), "GetExportedChatlistInvitesQuery");
     auto result = td_api::make_object<td_api::chatFolderInviteLinks>();
     for (auto &invite : ptr->invites_) {
       result->invite_links_.push_back(
@@ -398,8 +427,8 @@ class GetChatlistUpdatesQuery final : public Td::ResultHandler {
 
     auto ptr = result_ptr.move_as_ok();
     LOG(INFO) << "Receive result for GetChatlistUpdatesQuery: " << to_string(ptr);
-    td_->contacts_manager_->on_get_users(std::move(ptr->users_), "GetChatlistUpdatesQuery");
-    td_->contacts_manager_->on_get_chats(std::move(ptr->chats_), "GetChatlistUpdatesQuery");
+    td_->user_manager_->on_get_users(std::move(ptr->users_), "GetChatlistUpdatesQuery");
+    td_->chat_manager_->on_get_chats(std::move(ptr->chats_), "GetChatlistUpdatesQuery");
     auto missing_dialog_ids = td_->dialog_manager_->get_peers_dialog_ids(std::move(ptr->missing_peers_), true);
     promise_.set_value(td_->dialog_manager_->get_chats_object(-1, missing_dialog_ids, "GetChatlistUpdatesQuery"));
   }
@@ -491,8 +520,8 @@ class GetDialogsQuery final : public Td::ResultHandler {
     auto result = result_ptr.move_as_ok();
     LOG(INFO) << "Receive result for GetDialogsQuery: " << to_string(result);
 
-    td_->contacts_manager_->on_get_users(std::move(result->users_), "GetDialogsQuery");
-    td_->contacts_manager_->on_get_chats(std::move(result->chats_), "GetDialogsQuery");
+    td_->user_manager_->on_get_users(std::move(result->users_), "GetDialogsQuery");
+    td_->chat_manager_->on_get_chats(std::move(result->chats_), "GetDialogsQuery");
     td_->messages_manager_->on_get_dialogs(FolderId(), std::move(result->dialogs_), -1, std::move(result->messages_),
                                            std::move(promise_));
   }
@@ -551,10 +580,12 @@ class DialogFilterManager::DialogFiltersLogEvent {
   int32 server_main_dialog_list_position = 0;
   int32 main_dialog_list_position = 0;
   int32 updated_date = 0;
-  const vector<unique_ptr<DialogFilter>> *server_dialog_filters_in;
-  const vector<unique_ptr<DialogFilter>> *dialog_filters_in;
+  const vector<unique_ptr<DialogFilter>> *server_dialog_filters_in = nullptr;
+  const vector<unique_ptr<DialogFilter>> *dialog_filters_in = nullptr;
   vector<unique_ptr<DialogFilter>> server_dialog_filters_out;
   vector<unique_ptr<DialogFilter>> dialog_filters_out;
+  bool server_are_tags_enabled = false;
+  bool are_tags_enabled = false;
 
   template <class StorerT>
   void store(StorerT &storer) const {
@@ -567,6 +598,8 @@ class DialogFilterManager::DialogFiltersLogEvent {
     STORE_FLAG(has_dialog_filters);
     STORE_FLAG(has_server_main_dialog_list_position);
     STORE_FLAG(has_main_dialog_list_position);
+    STORE_FLAG(server_are_tags_enabled);
+    STORE_FLAG(are_tags_enabled);
     END_STORE_FLAGS();
     td::store(updated_date, storer);
     if (has_server_dialog_filters) {
@@ -595,6 +628,8 @@ class DialogFilterManager::DialogFiltersLogEvent {
       PARSE_FLAG(has_dialog_filters);
       PARSE_FLAG(has_server_main_dialog_list_position);
       PARSE_FLAG(has_main_dialog_list_position);
+      PARSE_FLAG(server_are_tags_enabled);
+      PARSE_FLAG(are_tags_enabled);
       END_PARSE_FLAGS();
     }
     td::parse(updated_date, parser);
@@ -630,14 +665,22 @@ void DialogFilterManager::init() {
     if (!dialog_filters.empty()) {
       DialogFiltersLogEvent log_event;
       if (log_event_parse(log_event, dialog_filters).is_ok()) {
+        server_are_tags_enabled_ = log_event.server_are_tags_enabled;
+        are_tags_enabled_ = log_event.are_tags_enabled;
         server_main_dialog_list_position_ = log_event.server_main_dialog_list_position;
         main_dialog_list_position_ = log_event.main_dialog_list_position;
-        if (!td_->option_manager_->get_option_boolean("is_premium") &&
-            (server_main_dialog_list_position_ != 0 || main_dialog_list_position_ != 0)) {
-          LOG(INFO) << "Ignore main chat list position " << server_main_dialog_list_position_ << '/'
-                    << main_dialog_list_position_;
-          server_main_dialog_list_position_ = 0;
-          main_dialog_list_position_ = 0;
+        if (!td_->option_manager_->get_option_boolean("is_premium")) {
+          if (server_main_dialog_list_position_ != 0 || main_dialog_list_position_ != 0) {
+            LOG(INFO) << "Ignore main chat list position " << server_main_dialog_list_position_ << '/'
+                      << main_dialog_list_position_;
+            server_main_dialog_list_position_ = 0;
+            main_dialog_list_position_ = 0;
+          }
+          if (server_are_tags_enabled_ || are_tags_enabled_) {
+            LOG(INFO) << "Ignore enabled tags " << server_are_tags_enabled_ << '/' << are_tags_enabled_;
+            server_are_tags_enabled_ = false;
+            are_tags_enabled_ = false;
+          }
         }
 
         dialog_filters_updated_date_ = td_->ignore_background_updates() ? 0 : log_event.updated_date;
@@ -906,7 +949,7 @@ void DialogFilterManager::get_dialog_filter(DialogFilterId dialog_filter_id,
                                             Promise<td_api::object_ptr<td_api::chatFolder>> &&promise) {
   CHECK(!td_->auth_manager_->is_bot());
   if (!dialog_filter_id.is_valid()) {
-    return promise.set_error(Status::Error(400, "Invalid chat folder identifier specified"));
+    return promise.set_error(400, "Invalid chat folder identifier specified");
   }
 
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
@@ -965,15 +1008,12 @@ void DialogFilterManager::load_dialog_filter(const DialogFilter *dialog_filter, 
 void DialogFilterManager::load_dialog_filter_dialogs(DialogFilterId dialog_filter_id,
                                                      vector<InputDialogId> &&input_dialog_ids,
                                                      Promise<Unit> &&promise) {
-  const size_t MAX_SLICE_SIZE = 100;  // server side limit
+  const size_t MAX_SLICE_SIZE = 100;  // server-side limit
   MultiPromiseActorSafe mpas{"GetFilterDialogsOnServerMultiPromiseActor"};
   mpas.add_promise(std::move(promise));
   auto lock = mpas.get_promise();
 
-  for (size_t i = 0; i < input_dialog_ids.size(); i += MAX_SLICE_SIZE) {
-    auto end_i = i + MAX_SLICE_SIZE;
-    auto end = end_i < input_dialog_ids.size() ? input_dialog_ids.begin() + end_i : input_dialog_ids.end();
-    vector<InputDialogId> slice_input_dialog_ids = {input_dialog_ids.begin() + i, end};
+  for (auto &slice_input_dialog_ids : vector_split(std::move(input_dialog_ids), MAX_SLICE_SIZE)) {
     auto query_promise = PromiseCreator::lambda([actor_id = actor_id(this), dialog_filter_id,
                                                  dialog_ids = InputDialogId::get_dialog_ids(slice_input_dialog_ids),
                                                  promise = mpas.get_promise()](Result<Unit> &&result) mutable {
@@ -1134,7 +1174,7 @@ void DialogFilterManager::reload_dialog_filters() {
   are_dialog_filters_being_reloaded_ = true;
   need_dialog_filters_reload_ = false;
   auto promise = PromiseCreator::lambda(
-      [actor_id = actor_id(this)](Result<vector<telegram_api::object_ptr<telegram_api::DialogFilter>>> r_filters) {
+      [actor_id = actor_id(this)](Result<telegram_api::object_ptr<telegram_api::messages_dialogFilters>> r_filters) {
         send_closure(actor_id, &DialogFilterManager::on_get_dialog_filters, std::move(r_filters), false);
       });
   td_->create_handler<GetDialogFiltersQuery>(std::move(promise))->send();
@@ -1187,7 +1227,7 @@ void DialogFilterManager::on_get_dialog_filter(telegram_api::object_ptr<telegram
 }
 
 void DialogFilterManager::on_get_dialog_filters(
-    Result<vector<telegram_api::object_ptr<telegram_api::DialogFilter>>> r_filters, bool dummy) {
+    Result<telegram_api::object_ptr<telegram_api::messages_dialogFilters>> r_filters, bool dummy) {
   if (G()->close_flag()) {
     return;
   }
@@ -1206,10 +1246,12 @@ void DialogFilterManager::on_get_dialog_filters(
     return;
   }
 
-  auto filters = r_filters.move_as_ok();
+  auto dialog_filters = r_filters.move_as_ok();
+  auto filters = std::move(dialog_filters->filters_);
   vector<unique_ptr<DialogFilter>> new_server_dialog_filters;
   LOG(INFO) << "Receive chat folders from server: " << to_string(filters);
   std::unordered_set<DialogFilterId, DialogFilterIdHash> new_dialog_filter_ids;
+  bool server_are_tags_enabled = dialog_filters->tags_enabled_;
   int32 server_main_dialog_list_position = -1;
   int32 position = 0;
   for (auto &filter : filters) {
@@ -1241,6 +1283,10 @@ void DialogFilterManager::on_get_dialog_filters(
   if (server_main_dialog_list_position != 0 && !td_->option_manager_->get_option_boolean("is_premium")) {
     LOG(INFO) << "Ignore server main chat list position " << server_main_dialog_list_position;
     server_main_dialog_list_position = 0;
+  }
+  if (server_are_tags_enabled && !td_->option_manager_->get_option_boolean("is_premium")) {
+    LOG(INFO) << "Ignore server enabled tags";
+    server_are_tags_enabled = false;
   }
 
   bool is_changed = false;
@@ -1363,6 +1409,15 @@ void DialogFilterManager::on_get_dialog_filters(
       is_changed = true;
     }
   }
+  if (server_are_tags_enabled_ != server_are_tags_enabled) {
+    server_are_tags_enabled_ = server_are_tags_enabled;
+
+    if (server_are_tags_enabled != are_tags_enabled_) {
+      LOG(INFO) << "Change are_tags_enabled_ from " << are_tags_enabled_ << " to " << server_are_tags_enabled;
+      are_tags_enabled_ = server_are_tags_enabled;
+      is_changed = true;
+    }
+  }
   if (is_changed || !is_update_chat_folders_sent_) {
     send_update_chat_folders();
   }
@@ -1402,6 +1457,10 @@ bool DialogFilterManager::need_synchronize_dialog_filters() const {
   }
   if (get_server_main_dialog_list_position() != server_main_dialog_list_position_) {
     // need reorder main chat list on server
+    return true;
+  }
+  if (are_tags_enabled_ != server_are_tags_enabled_) {
+    // need enable/disable tags
     return true;
   }
   return false;
@@ -1452,6 +1511,10 @@ void DialogFilterManager::synchronize_dialog_filters() {
     return reorder_dialog_filters_on_server(std::move(dialog_filter_ids), server_main_dialog_list_position);
   }
 
+  if (are_tags_enabled_ != server_are_tags_enabled_) {
+    return toggle_are_tags_enabled_on_server(are_tags_enabled_);
+  }
+
   UNREACHABLE();
 }
 
@@ -1471,6 +1534,7 @@ td_api::object_ptr<td_api::updateChatFolders> DialogFilterManager::get_update_ch
     update->chat_folders_.push_back(dialog_filter->get_chat_folder_info_object());
   }
   update->main_chat_list_position_ = main_dialog_list_position_;
+  update->are_tags_enabled_ = are_tags_enabled_;
   return update;
 }
 
@@ -1479,10 +1543,10 @@ void DialogFilterManager::create_dialog_filter(td_api::object_ptr<td_api::chatFo
   auto max_dialog_filters = clamp(td_->option_manager_->get_option_integer("chat_folder_count_max"),
                                   static_cast<int64>(0), static_cast<int64>(100));
   if (dialog_filters_.size() >= narrow_cast<size_t>(max_dialog_filters)) {
-    return promise.set_error(Status::Error(400, "The maximum number of chat folders exceeded"));
+    return promise.set_error(400, "The maximum number of chat folders exceeded");
   }
   if (!is_update_chat_folders_sent_) {
-    return promise.set_error(Status::Error(400, "Chat folders are not synchronized yet"));
+    return promise.set_error(400, "Chat folders are not synchronized yet");
   }
 
   DialogFilterId dialog_filter_id;
@@ -1495,7 +1559,7 @@ void DialogFilterManager::create_dialog_filter(td_api::object_ptr<td_api::chatFo
   TRY_RESULT_PROMISE(promise, dialog_filter,
                      DialogFilter::create_dialog_filter(td_, dialog_filter_id, std::move(filter)));
   if (dialog_filter->is_shareable()) {
-    return promise.set_error(Status::Error(400, "Can't create shareable folder"));
+    return promise.set_error(400, "Can't create shareable folder");
   }
   auto chat_folder_info = dialog_filter->get_chat_folder_info_object();
 
@@ -1517,14 +1581,14 @@ void DialogFilterManager::edit_dialog_filter(DialogFilterId dialog_filter_id,
   CHECK(!td_->auth_manager_->is_bot());
   auto old_dialog_filter = get_dialog_filter(dialog_filter_id);
   if (old_dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
   CHECK(is_update_chat_folders_sent_);
 
   TRY_RESULT_PROMISE(promise, new_dialog_filter,
                      DialogFilter::create_dialog_filter(td_, dialog_filter_id, std::move(filter)));
   if (new_dialog_filter->is_shareable() != old_dialog_filter->is_shareable()) {
-    return promise.set_error(Status::Error(400, "Can't convert a shareable folder to a non-shareable"));
+    return promise.set_error(400, "Can't convert a shareable folder to a non-shareable");
   }
   new_dialog_filter->update_from(*old_dialog_filter);
   auto chat_folder_info = new_dialog_filter->get_chat_folder_info_object();
@@ -1610,7 +1674,7 @@ void DialogFilterManager::delete_dialog_filter(DialogFilterId dialog_filter_id, 
   }
   for (auto &leave_dialog_id : leave_dialog_ids) {
     if (!dialog_filter->is_dialog_included(leave_dialog_id)) {
-      return promise.set_error(Status::Error(400, "The chat doesn't included in the folder"));
+      return promise.set_error(400, "The chat doesn't included in the folder");
     }
   }
   if (!leave_dialog_ids.empty()) {
@@ -1680,7 +1744,7 @@ void DialogFilterManager::get_leave_dialog_filter_suggestions(DialogFilterId dia
                                                               Promise<td_api::object_ptr<td_api::chats>> &&promise) {
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
   if (dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
   if (!dialog_filter->is_shareable()) {
     return promise.set_value(td_api::make_object<td_api::chats>());
@@ -1704,7 +1768,7 @@ void DialogFilterManager::on_get_leave_dialog_filter_suggestions(
 
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
   if (dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
   if (!dialog_filter->is_shareable()) {
     return promise.set_value(td_api::make_object<td_api::chats>());
@@ -1722,16 +1786,16 @@ void DialogFilterManager::reorder_dialog_filters(vector<DialogFilterId> dialog_f
   for (auto dialog_filter_id : dialog_filter_ids) {
     auto dialog_filter = get_dialog_filter(dialog_filter_id);
     if (dialog_filter == nullptr) {
-      return promise.set_error(Status::Error(400, "Chat folder not found"));
+      return promise.set_error(400, "Chat folder not found");
     }
   }
   std::unordered_set<DialogFilterId, DialogFilterIdHash> new_dialog_filter_ids_set(dialog_filter_ids.begin(),
                                                                                    dialog_filter_ids.end());
   if (new_dialog_filter_ids_set.size() != dialog_filter_ids.size()) {
-    return promise.set_error(Status::Error(400, "Duplicate chat folders in the new list"));
+    return promise.set_error(400, "Duplicate chat folders in the new list");
   }
   if (main_dialog_list_position < 0 || main_dialog_list_position > static_cast<int32>(dialog_filters_.size())) {
-    return promise.set_error(Status::Error(400, "Invalid main chat list position specified"));
+    return promise.set_error(400, "Invalid main chat list position specified");
   }
   if (!td_->option_manager_->get_option_boolean("is_premium")) {
     main_dialog_list_position = 0;
@@ -1771,6 +1835,50 @@ void DialogFilterManager::on_reorder_dialog_filters(vector<DialogFilterId> dialo
     if (DialogFilter::set_dialog_filters_order(server_dialog_filters_, std::move(dialog_filter_ids)) ||
         server_main_dialog_list_position_ != main_dialog_list_position) {
       server_main_dialog_list_position_ = main_dialog_list_position;
+      save_dialog_filters();
+    }
+  }
+
+  are_dialog_filters_being_synchronized_ = false;
+  synchronize_dialog_filters();
+}
+
+void DialogFilterManager::toggle_dialog_filter_tags(bool are_tags_enabled, Promise<Unit> &&promise) {
+  if (!td_->option_manager_->get_option_boolean("is_premium")) {
+    if (!are_tags_enabled) {
+      return promise.set_value(Unit());
+    }
+    return promise.set_error(400, "Method not available");
+  }
+
+  if (are_tags_enabled_ != are_tags_enabled) {
+    are_tags_enabled_ = are_tags_enabled;
+
+    save_dialog_filters();
+    send_update_chat_folders();
+
+    synchronize_dialog_filters();
+  }
+  promise.set_value(Unit());
+}
+
+void DialogFilterManager::toggle_are_tags_enabled_on_server(bool are_tags_enabled) {
+  CHECK(!td_->auth_manager_->is_bot());
+  are_dialog_filters_being_synchronized_ = true;
+  auto promise = PromiseCreator::lambda([actor_id = actor_id(this), are_tags_enabled](Result<Unit> result) mutable {
+    send_closure(actor_id, &DialogFilterManager::on_toggle_are_tags_enabled, are_tags_enabled,
+                 result.is_error() ? result.move_as_error() : Status::OK());
+  });
+  td_->create_handler<ToggleDialogFilterTagsQuery>(std::move(promise))->send(are_tags_enabled);
+}
+
+void DialogFilterManager::on_toggle_are_tags_enabled(bool are_tags_enabled, Status result) {
+  CHECK(!td_->auth_manager_->is_bot());
+  if (result.is_error()) {
+    are_tags_enabled_ = !are_tags_enabled;
+  } else {
+    if (server_are_tags_enabled_ != are_tags_enabled) {
+      server_are_tags_enabled_ = are_tags_enabled;
       save_dialog_filters();
     }
   }
@@ -1846,6 +1954,8 @@ void DialogFilterManager::save_dialog_filters() {
   }
 
   DialogFiltersLogEvent log_event;
+  log_event.server_are_tags_enabled = server_are_tags_enabled_;
+  log_event.are_tags_enabled = are_tags_enabled_;
   log_event.server_main_dialog_list_position = server_main_dialog_list_position_;
   log_event.main_dialog_list_position = main_dialog_list_position_;
   log_event.updated_date = dialog_filters_updated_date_;
@@ -1864,7 +1974,7 @@ void DialogFilterManager::get_dialogs_for_dialog_filter_invite_link(
     DialogFilterId dialog_filter_id, Promise<td_api::object_ptr<td_api::chats>> promise) {
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
   if (dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
 
   auto load_promise = PromiseCreator::lambda(
@@ -1882,7 +1992,7 @@ void DialogFilterManager::do_get_dialogs_for_dialog_filter_invite_link(
     DialogFilterId dialog_filter_id, Promise<td_api::object_ptr<td_api::chats>> promise) {
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
   if (dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
 
   promise.set_value(td_->dialog_manager_->get_chats_object(-1, dialog_filter->get_dialogs_for_invite_link(td_),
@@ -1894,22 +2004,22 @@ void DialogFilterManager::create_dialog_filter_invite_link(
     Promise<td_api::object_ptr<td_api::chatFolderInviteLink>> promise) {
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
   if (dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
   vector<tl_object_ptr<telegram_api::InputPeer>> input_peers;
   input_peers.reserve(dialog_ids.size());
   for (auto &dialog_id : dialog_ids) {
     if (!td_->dialog_manager_->have_dialog_force(dialog_id, "create_dialog_filter_invite_link")) {
-      return promise.set_error(Status::Error(400, "Chat not found"));
+      return promise.set_error(400, "Chat not found");
     }
     auto input_peer = td_->dialog_manager_->get_input_peer(dialog_id, AccessRights::Write);
     if (input_peer == nullptr) {
-      return promise.set_error(Status::Error(400, "Have no access to the chat"));
+      return promise.set_error(400, "Have no access to the chat");
     }
     input_peers.push_back(std::move(input_peer));
   }
   if (input_peers.empty()) {
-    return promise.set_error(Status::Error(400, "At least one chat must be included"));
+    return promise.set_error(400, "At least one chat must be included");
   }
   td_->create_handler<ExportChatlistInviteQuery>(std::move(promise))
       ->send(dialog_filter_id, invite_link_name, std::move(input_peers));
@@ -1919,7 +2029,7 @@ void DialogFilterManager::get_dialog_filter_invite_links(
     DialogFilterId dialog_filter_id, Promise<td_api::object_ptr<td_api::chatFolderInviteLinks>> promise) {
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
   if (dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
   if (!dialog_filter->is_shareable()) {
     return promise.set_value(td_api::make_object<td_api::chatFolderInviteLinks>());
@@ -1932,22 +2042,22 @@ void DialogFilterManager::edit_dialog_filter_invite_link(
     Promise<td_api::object_ptr<td_api::chatFolderInviteLink>> promise) {
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
   if (dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
   vector<tl_object_ptr<telegram_api::InputPeer>> input_peers;
   input_peers.reserve(dialog_ids.size());
   for (auto &dialog_id : dialog_ids) {
     if (!td_->dialog_manager_->have_dialog_force(dialog_id, "edit_dialog_filter_invite_link")) {
-      return promise.set_error(Status::Error(400, "Chat not found"));
+      return promise.set_error(400, "Chat not found");
     }
     auto input_peer = td_->dialog_manager_->get_input_peer(dialog_id, AccessRights::Write);
     if (input_peer == nullptr) {
-      return promise.set_error(Status::Error(400, "Have no access to the chat"));
+      return promise.set_error(400, "Have no access to the chat");
     }
     input_peers.push_back(std::move(input_peer));
   }
   if (input_peers.empty()) {
-    return promise.set_error(Status::Error(400, "At least one chat must be included"));
+    return promise.set_error(400, "At least one chat must be included");
   }
   td_->create_handler<EditExportedChatlistInviteQuery>(std::move(promise))
       ->send(dialog_filter_id, invite_link, invite_link_name, std::move(input_peers));
@@ -1957,7 +2067,7 @@ void DialogFilterManager::delete_dialog_filter_invite_link(DialogFilterId dialog
                                                            Promise<Unit> promise) {
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
   if (dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
   td_->create_handler<DeleteExportedChatlistInviteQuery>(std::move(promise))->send(dialog_filter_id, invite_link);
 }
@@ -1965,7 +2075,7 @@ void DialogFilterManager::delete_dialog_filter_invite_link(DialogFilterId dialog
 void DialogFilterManager::check_dialog_filter_invite_link(
     const string &invite_link, Promise<td_api::object_ptr<td_api::chatFolderInviteLinkInfo>> &&promise) {
   if (!DialogFilterInviteLink::is_valid_invite_link(invite_link)) {
-    return promise.set_error(Status::Error(400, "Wrong invite link"));
+    return promise.set_error(400, "Wrong invite link");
   }
 
   CHECK(!invite_link.empty());
@@ -1988,12 +2098,12 @@ void DialogFilterManager::on_get_chatlist_invite(
       auto invite = move_tl_object_as<telegram_api::chatlists_chatlistInviteAlready>(invite_ptr);
       DialogFilterId dialog_filter_id = DialogFilterId(invite->filter_id_);
       if (!dialog_filter_id.is_valid()) {
-        return promise.set_error(Status::Error(500, "Receive invalid chat folder identifier"));
+        return promise.set_error(500, "Receive invalid chat folder identifier");
       }
       auto dialog_filter = get_dialog_filter(dialog_filter_id);
       if (dialog_filter == nullptr) {
         reload_dialog_filters();
-        return promise.set_error(Status::Error(500, "Receive unknown chat folder"));
+        return promise.set_error(500, "Receive unknown chat folder");
       }
       info = dialog_filter->get_chat_folder_info_object();
       missing_peers = std::move(invite->missing_peers_);
@@ -2008,8 +2118,13 @@ void DialogFilterManager::on_get_chatlist_invite(
       if (icon_name.empty()) {
         icon_name = "Custom";
       }
+
+      auto title = get_formatted_text(nullptr, std::move(invite->title_), true, false, "chatlistInvite");
+      keep_only_custom_emoji(title);
+      auto name = td_api::make_object<td_api::chatFolderName>(get_formatted_text_object(nullptr, title, true, -1),
+                                                              !invite->title_noanimate_);
       info = td_api::make_object<td_api::chatFolderInfo>(
-          0, invite->title_, td_api::make_object<td_api::chatFolderIcon>(icon_name), true, false);
+          0, std::move(name), td_api::make_object<td_api::chatFolderIcon>(icon_name), -1, true, false);
       missing_peers = std::move(invite->peers_);
       chats = std::move(invite->chats_);
       users = std::move(invite->users_);
@@ -2020,8 +2135,8 @@ void DialogFilterManager::on_get_chatlist_invite(
       break;
   }
 
-  td_->contacts_manager_->on_get_users(std::move(users), "on_get_chatlist_invite");
-  td_->contacts_manager_->on_get_chats(std::move(chats), "on_get_chatlist_invite");
+  td_->user_manager_->on_get_users(std::move(users), "on_get_chatlist_invite");
+  td_->chat_manager_->on_get_chats(std::move(chats), "on_get_chatlist_invite");
 
   auto missing_dialog_ids = td_->dialog_manager_->get_peers_dialog_ids(std::move(missing_peers), true);
   auto already_dialog_ids = td_->dialog_manager_->get_peers_dialog_ids(std::move(already_peers));
@@ -2033,15 +2148,11 @@ void DialogFilterManager::on_get_chatlist_invite(
 void DialogFilterManager::add_dialog_filter_by_invite_link(const string &invite_link, vector<DialogId> dialog_ids,
                                                            Promise<Unit> &&promise) {
   if (!DialogFilterInviteLink::is_valid_invite_link(invite_link)) {
-    return promise.set_error(Status::Error(400, "Wrong invite link"));
+    return promise.set_error(400, "Wrong invite link");
   }
   for (auto dialog_id : dialog_ids) {
-    if (!td_->dialog_manager_->have_dialog_force(dialog_id, "add_dialog_filter_by_invite_link")) {
-      return promise.set_error(Status::Error(400, "Chat not found"));
-    }
-    if (!td_->dialog_manager_->have_input_peer(dialog_id, AccessRights::Know)) {
-      return promise.set_error(Status::Error(400, "Can't access the chat"));
-    }
+    TRY_STATUS_PROMISE(promise, td_->dialog_manager_->check_dialog_access(dialog_id, false, AccessRights::Know,
+                                                                          "add_dialog_filter_by_invite_link"));
   }
 
   CHECK(!invite_link.empty());
@@ -2052,7 +2163,7 @@ void DialogFilterManager::get_dialog_filter_new_chats(DialogFilterId dialog_filt
                                                       Promise<td_api::object_ptr<td_api::chats>> &&promise) {
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
   if (dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
   if (!dialog_filter->is_shareable()) {
     return promise.set_value(td_api::make_object<td_api::chats>());
@@ -2064,18 +2175,14 @@ void DialogFilterManager::add_dialog_filter_new_chats(DialogFilterId dialog_filt
                                                       Promise<Unit> &&promise) {
   auto dialog_filter = get_dialog_filter(dialog_filter_id);
   if (dialog_filter == nullptr) {
-    return promise.set_error(Status::Error(400, "Chat folder not found"));
+    return promise.set_error(400, "Chat folder not found");
   }
   if (!dialog_filter->is_shareable()) {
-    return promise.set_error(Status::Error(400, "Chat folder must be shareable"));
+    return promise.set_error(400, "Chat folder must be shareable");
   }
   for (auto dialog_id : dialog_ids) {
-    if (!td_->dialog_manager_->have_dialog_force(dialog_id, "add_dialog_filter_new_chats")) {
-      return promise.set_error(Status::Error(400, "Chat not found"));
-    }
-    if (!td_->dialog_manager_->have_input_peer(dialog_id, AccessRights::Know)) {
-      return promise.set_error(Status::Error(400, "Can't access the chat"));
-    }
+    TRY_STATUS_PROMISE(promise, td_->dialog_manager_->check_dialog_access(dialog_id, false, AccessRights::Know,
+                                                                          "add_dialog_filter_new_chats"));
   }
 
   if (dialog_ids.empty()) {

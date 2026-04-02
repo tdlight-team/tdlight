@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -36,7 +36,7 @@ class NotificationSoundLocal final : public NotificationSound {
 
 class NotificationSoundRingtone final : public NotificationSound {
  public:
-  int64 ringtone_id_;
+  int64 ringtone_id_ = 0;
 
   NotificationSoundRingtone() = default;
   explicit NotificationSoundRingtone(int64 ringtone_id) : ringtone_id_(ringtone_id) {
@@ -223,7 +223,7 @@ unique_ptr<NotificationSound> get_notification_sound(bool use_default_sound, int
   return td::make_unique<NotificationSoundRingtone>(ringtone_id);
 }
 
-static unique_ptr<NotificationSound> get_notification_sound(telegram_api::NotificationSound *notification_sound) {
+unique_ptr<NotificationSound> get_notification_sound(telegram_api::NotificationSound *notification_sound) {
   if (notification_sound == nullptr) {
     return nullptr;
   }
@@ -234,7 +234,7 @@ static unique_ptr<NotificationSound> get_notification_sound(telegram_api::Notifi
     case telegram_api::notificationSoundNone::ID:
       return make_unique<NotificationSoundNone>();
     case telegram_api::notificationSoundLocal::ID: {
-      const auto *sound = static_cast<telegram_api::notificationSoundLocal *>(notification_sound);
+      auto *sound = static_cast<telegram_api::notificationSoundLocal *>(notification_sound);
       return td::make_unique<NotificationSoundLocal>(std::move(sound->title_), std::move(sound->data_));
     }
     case telegram_api::notificationSoundRingtone::ID: {
@@ -256,7 +256,7 @@ unique_ptr<NotificationSound> get_notification_sound(telegram_api::peerNotifySet
   telegram_api::NotificationSound *sound =
 #if TD_ANDROID
       for_stories ? settings->stories_android_sound_.get() : settings->android_sound_.get();
-#elif TD_DARWIN_IOS || TD_DARWIN_TV_OS || TD_DARWIN_WATCH_OS
+#elif TD_DARWIN_IOS || TD_DARWIN_TV_OS || TD_DARWIN_VISION_OS || TD_DARWIN_WATCH_OS || TD_DARWIN_UNKNOWN
       for_stories ? settings->stories_ios_sound_.get() : settings->ios_sound_.get();
 #else
       for_stories ? settings->stories_other_sound_.get() : settings->other_sound_.get();
@@ -265,8 +265,11 @@ unique_ptr<NotificationSound> get_notification_sound(telegram_api::peerNotifySet
 }
 
 telegram_api::object_ptr<telegram_api::NotificationSound> get_input_notification_sound(
-    const unique_ptr<NotificationSound> &notification_sound) {
+    const unique_ptr<NotificationSound> &notification_sound, bool return_non_null) {
   if (notification_sound == nullptr) {
+    if (return_non_null) {
+      return telegram_api::make_object<telegram_api::notificationSoundDefault>();
+    }
     return nullptr;
   }
 

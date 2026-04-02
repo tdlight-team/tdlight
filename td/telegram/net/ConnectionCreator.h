@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -15,6 +15,7 @@
 
 #include "td/mtproto/AuthData.h"
 #include "td/mtproto/ConnectionManager.h"
+#include "td/mtproto/Handshake.h"
 #include "td/mtproto/RawConnection.h"
 #include "td/mtproto/TransportType.h"
 
@@ -70,33 +71,22 @@ class ConnectionCreator final : public NetQueryCallback {
   void set_net_stats_callback(std::shared_ptr<NetStatsCallback> common_callback,
                               std::shared_ptr<NetStatsCallback> media_callback);
 
-  void add_proxy(int32 old_proxy_id, string server, int32 port, bool enable,
-                 td_api::object_ptr<td_api::ProxyType> proxy_type, Promise<td_api::object_ptr<td_api::proxy>> promise);
+  void add_proxy(int32 old_proxy_id, td_api::object_ptr<td_api::proxy> proxy, bool enable,
+                 Promise<td_api::object_ptr<td_api::addedProxy>> promise);
+
   void enable_proxy(int32 proxy_id, Promise<Unit> promise);
+
   void disable_proxy(Promise<Unit> promise);
+
   void remove_proxy(int32 proxy_id, Promise<Unit> promise);
-  void get_proxies(Promise<td_api::object_ptr<td_api::proxies>> promise);
-  void get_proxy_link(int32 proxy_id, Promise<string> promise);
-  void ping_proxy(int32 proxy_id, Promise<double> promise);
 
-  struct ConnectionData {
-    IPAddress ip_address;
-    BufferedFd<SocketFd> buffered_socket_fd;
-    mtproto::ConnectionManager::ConnectionToken connection_token;
-    unique_ptr<mtproto::RawConnection::StatsCallback> stats_callback;
-  };
+  void get_proxies(Promise<td_api::object_ptr<td_api::addedProxies>> promise);
 
-  static DcOptions get_default_dc_options(bool is_test);
-
-  static ActorOwn<> prepare_connection(IPAddress ip_address, SocketFd socket_fd, const Proxy &proxy,
-                                       const IPAddress &mtproto_ip_address,
-                                       const mtproto::TransportType &transport_type, Slice actor_name_prefix,
-                                       Slice debug_str,
-                                       unique_ptr<mtproto::RawConnection::StatsCallback> stats_callback,
-                                       ActorShared<> parent, bool use_connection_token,
-                                       Promise<ConnectionData> promise);
+  void ping_proxy(td_api::object_ptr<td_api::proxy> input_proxy, Promise<double> promise);
 
  private:
+  friend class ProxyChecker;
+
   ActorShared<> parent_;
   DcOptionsSet dc_options_set_;
   bool network_flag_ = false;
@@ -119,7 +109,7 @@ class ConnectionCreator final : public NetQueryCallback {
 
   struct ClientInfo {
     class Backoff {
-#if TD_ANDROID || TD_DARWIN_IOS || TD_DARWIN_WATCH_OS || TD_TIZEN
+#if TD_ANDROID || TD_DARWIN_IOS || TD_DARWIN_VISION_OS || TD_DARWIN_WATCH_OS || TD_TIZEN
       static constexpr int32 MAX_BACKOFF = 300;
 #else
       static constexpr int32 MAX_BACKOFF = 16;
@@ -185,6 +175,13 @@ class ConnectionCreator final : public NetQueryCallback {
   };
   std::map<uint64, PingMainDcRequest> ping_main_dc_requests_;
 
+  struct ConnectionData {
+    IPAddress ip_address;
+    BufferedFd<SocketFd> buffered_socket_fd;
+    mtproto::ConnectionManager::ConnectionToken connection_token;
+    unique_ptr<mtproto::RawConnection::StatsCallback> stats_callback;
+  };
+
   uint64 next_token() {
     return ++current_token_;
   }
@@ -198,7 +195,7 @@ class ConnectionCreator final : public NetQueryCallback {
   static string get_proxy_database_key(int32 proxy_id);
   static string get_proxy_used_database_key(int32 proxy_id);
   void save_proxy_last_used_date(int32 delay);
-  td_api::object_ptr<td_api::proxy> get_proxy_object(int32 proxy_id) const;
+  td_api::object_ptr<td_api::addedProxy> get_added_proxy_object(int32 proxy_id) const;
 
   void start_up() final;
   void hangup_shared() final;
@@ -206,7 +203,7 @@ class ConnectionCreator final : public NetQueryCallback {
   void loop() final;
 
   void init_proxies();
-  void save_dc_options();
+  void add_dc_options(DcOptions &&new_dc_options);
   Result<SocketFd> do_request_connection(DcId dc_id, bool allow_media_only);
   Result<std::pair<unique_ptr<mtproto::RawConnection>, bool>> do_request_raw_connection(DcId dc_id,
                                                                                         bool allow_media_only,
@@ -237,16 +234,25 @@ class ConnectionCreator final : public NetQueryCallback {
     IPAddress mtproto_ip_address;
     bool check_mode{false};
   };
+  Result<SocketFd> find_connection(const Proxy &proxy, const IPAddress &proxy_ip_address, DcId dc_id,
+                                   bool allow_media_only, FindConnectionExtra &extra);
+
+  static DcOptions get_default_dc_options(bool is_test);
 
   static Result<mtproto::TransportType> get_transport_type(const Proxy &proxy,
                                                            const DcOptionsSet::ConnectionInfo &info);
 
-  Result<SocketFd> find_connection(const Proxy &proxy, const IPAddress &proxy_ip_address, DcId dc_id,
-                                   bool allow_media_only, FindConnectionExtra &extra);
+  static ActorOwn<> prepare_connection(IPAddress ip_address, SocketFd socket_fd, const Proxy &proxy,
+                                       const IPAddress &mtproto_ip_address,
+                                       const mtproto::TransportType &transport_type, Slice actor_name_prefix,
+                                       Slice debug_str,
+                                       unique_ptr<mtproto::RawConnection::StatsCallback> stats_callback,
+                                       ActorShared<> parent, bool use_connection_token,
+                                       Promise<ConnectionData> promise);
 
   ActorId<GetHostByNameActor> get_dns_resolver();
 
-  void ping_proxy_resolved(int32 proxy_id, IPAddress ip_address, Promise<double> promise);
+  void ping_proxy_resolved(Proxy &&proxy, IPAddress ip_address, Promise<double> promise);
 
   void ping_proxy_buffered_socket_fd(IPAddress ip_address, BufferedFd<SocketFd> buffered_socket_fd,
                                      mtproto::TransportType transport_type, string debug_str, Promise<double> promise);

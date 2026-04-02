@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -45,8 +45,8 @@ uint64 get_md5_string_hash(const string &str) TD_WARN_UNUSED_RESULT;
 // calculates hash of list of uint64
 int64 get_vector_hash(const vector<uint64> &numbers) TD_WARN_UNUSED_RESULT;
 
-// returns emoji corresponding to the specified number
-string get_emoji_fingerprint(uint64 num);
+// returns 4 emoji corresponding to the specified 32-byte buffer
+vector<string> get_emoji_fingerprints(const unsigned char *buffer);
 
 // checks whether currency amount is valid
 bool check_currency_amount(int64 amount);
@@ -57,5 +57,14 @@ Status validate_bot_language_code(const string &language_code);
 // returns 0-based indexes of strings matching the query by prefixes
 vector<int32> search_strings_by_prefix(const vector<string> &strings, const string &query, int32 limit,
                                        bool return_all_for_empty_query, int32 &total_count);
+
+// converts Premium duration in days to approximate duration in months
+int32 get_premium_duration_month_count(int32 day_count);
+
+// converts Premium duration in months to duration in days
+int32 get_premium_duration_day_count(int32 month_count);
+
+// checks that the integer represents a valid RGB color
+bool is_valid_color(int32 color);
 
 }  // namespace td

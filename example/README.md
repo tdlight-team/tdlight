@@ -35,6 +35,7 @@ Choose your preferred programming language to see examples of usage and a detail
 - [Vala](#vala)
 - [1С](#1s)
 - [C](#c)
+- [Assembly languages](#assembly)
 - [G](#g)
 - [Other](#other)
 
@@ -49,7 +50,9 @@ If you use Python >= 3.6, take a look at [python-telegram](https://github.com/al
 The wrapper uses the full power of asyncio, has a good documentation and has several examples. It can be installed through pip or used in a Docker container.
 You can also try a fork [python-telegram](https://github.com/iTeam-co/pytglib) of this library.
 
-If you want to use TDLib with asyncio and Python >= 3.9, take a look at [aiotdlib](https://github.com/pylakey/aiotdlib) or [Pytdbot](https://github.com/pytdbot/client).
+If you want to use TDLib with asyncio and Python >= 3.9, take a look at [aiotdlib](https://github.com/pylakey/aiotdlib) or [Pytdbot](https://github.com/pytdbot/client) (built on [AYMENJD/tdjson](https://github.com/AYMENJD/tdjson), a high-performance TDLib binding).
+
+If you want to use TDLib with [SidusAI](https://sidusai.ai/), take a look at [sidusai-tdlib](https://github.com/sidus-ai/sidus-ai-core/pull/22/files).
 
 For older Python versions you can use [pytdlib](https://github.com/pytdlib/pytdlib).
 This wrapper contains generator for TDLib API classes and basic interface for interaction with TDLib.
@@ -60,7 +63,7 @@ You can also check out [example/python/tdjson_example.py](https://github.com/tdl
 <a name="javascript"></a>
 ## Using TDLib in JavaScript projects
 
-TDLib can be compiled to WebAssembly or asm.js and used in a browser from JavaScript. See [tdweb](https://github.com/tdlight-team/tdlight/tree/master/example/web) as a convenient wrapper for TDLib in a browser
+TDLib can be compiled to WebAssembly and used in a browser from JavaScript. See [tdweb](https://github.com/tdlight-team/tdlight/tree/master/example/web) as a convenient wrapper for TDLib in a browser
 and [telegram-react](https://github.com/evgeny-nadymov/telegram-react) as an example of a TDLib-based Telegram client.
 
 See also [Svelte-tdweb-starter](https://github.com/gennadypolakov/svelte-tdweb-starter) - Svelte wrapper for tdweb, and [Telegram-Photoframe](https://github.com/lukefx/telegram-photoframe) - a web application that displays your preferred group or channel as Photoframe.
@@ -69,7 +72,7 @@ TDLib can be used from Node.js through the [JSON](https://github.com/tdlib/td#us
 
 Convenient Node.js wrappers already exist for our JSON interface.
 For example, take a look at [Airgram](https://github.com/airgram/airgram) – modern TDLib framework for TypeScript/JavaScript, or
-at [tdl](https://github.com/Bannerets/tdl), which provides a convenient, fully-asynchronous interface for interaction with TDLib and contains a bunch of examples.
+at [tdl](https://github.com/eilvelia/tdl), which provides a convenient, fully-asynchronous interface for interaction with TDLib and contains a bunch of examples.
 
 You can also see [TdNode](https://github.com/puppy0cam/TdNode), [tglib](https://github.com/nodegin/tglib), [node-tdlib](https://github.com/wfjsw/node-tdlib), [tdlnode](https://github.com/fonbah/tdlnode),
 [Paper Plane](https://github.com/par6n/paper-plane), or [node-tlg](https://github.com/dilongfa/node-tlg) for other examples of TDLib JSON interface integration with Node.js.
@@ -87,7 +90,7 @@ TDLib can be used from the Go programming language through the [JSON](https://gi
 Convenient Go wrappers already exist for our JSON interface.
 For example, take a look at [github.com/zelenin/go-tdlib](https://github.com/zelenin/go-tdlib) or [github.com/Arman92/go-tdlib](https://github.com/Arman92/go-tdlib), which provide a convenient TDLib client, a generator for TDLib API classes and contain many examples.
 
-You can also see [github.com/aliforever/go-tdlib](https://github.com/aliforever/go-tdlib) or [github.com/L11R/go-tdjson](https://github.com/L11R/go-tdjson) for another examples of TDLib JSON interface integration with Go.
+You can also see [github.com/aliforever/go-tdlib](https://github.com/aliforever/go-tdlib) for another examples of TDLib JSON interface integration with Go.
 
 <a name="java"></a>
 ## Using TDLib in Java projects
@@ -96,7 +99,7 @@ TDLib can be used from the Java programming language through native [JNI](https:
 
 We provide a generator for JNI bridge methods and Java classes for all TDLib API methods and objects.
 See [example/java](https://github.com/tdlight-team/tdlight/tree/master/example/java) for an example of using TDLib from desktop Java along with detailed building and usage instructions.
-To use TDLib to create Android Java applications, use our [prebuilt library for Android](https://core.telegram.org/tdlib/tdlib.zip).
+See [example/android](https://github.com/tdlight-team/tdlight/tree/master/example/android) for detailed build instructions for Android.
 
 <a name="kotlin"></a>
 ## Using TDLib in Kotlin projects
@@ -140,7 +143,7 @@ or [MeeGram](https://github.com/qtinsider/meegram2) - a Telegram client for Noki
 
 TDLib can be used from the Swift programming language through the [JSON](https://github.com/tdlib/td#using-json) interface and can be linked statically or dynamically.
 
-See [example/ios](https://github.com/tdlight-team/tdlight/tree/master/example/ios) for an example of building TDLib for iOS, watchOS, tvOS, and macOS.
+See [example/ios](https://github.com/tdlight-team/tdlight/tree/master/example/ios) for an example of building TDLib for iOS, watchOS, tvOS, visionOS, and macOS.
 
 See [TDLibKit](https://github.com/Swiftgram/TDLibKit), [tdlib-swift](https://github.com/modestman/tdlib-swift), or [TDLib-iOS](https://github.com/leoMehlig/TDLib-iOS), which provide convenient TDLib clients with automatically generated and fully-documented classes for all TDLib API methods and objects.
 
@@ -153,7 +156,7 @@ See [example/swift](https://github.com/tdlight-team/tdlight/tree/master/example/
 
 TDLib can be used from the Objective-C programming language through [JSON](https://github.com/tdlib/td#using-json) interface and can be linked statically or dynamically.
 
-See [example/ios](https://github.com/tdlight-team/tdlight/tree/master/example/ios) for an example of building TDLib for iOS, watchOS, tvOS, and macOS.
+See [example/ios](https://github.com/tdlight-team/tdlight/tree/master/example/ios) for an example of building TDLib for iOS, watchOS, tvOS, visionOS, and macOS.
 
 <a name="object-pascal"></a>
 ## Using TDLib in Object Pascal projects with Delphi and Lazarus
@@ -200,7 +203,8 @@ See [erl-tdlib](https://github.com/lattenwald/erl-tdlib) for an example of TDLib
 <a name="php"></a>
 ## Using TDLib in PHP projects
 
-If you use modern PHP >= 7.4, you can use TDLib via a PHP FFI extension. For example, take a look at [ffi-tdlib](https://github.com/aurimasniekis/php-ffi-tdlib), or [tdlib-php-ffi](https://github.com/thisismzm/tdlib-php-ffi) - FFI-based TDLib wrappers.
+If you use modern PHP >= 7.4, you can use TDLib via a PHP FFI extension.
+For example, take a look at [ffi-tdlib](https://github.com/aurimasniekis/php-ffi-tdlib), [tdlib-php-ffi](https://github.com/thisismzm/tdlib-php-ffi), or [tdjson_example](https://github.com/tdlib/td/pull/3444/files) - FFI-based TDLib wrappers.
 
 See also [tdlib-schema](https://github.com/aurimasniekis/php-tdlib-schema) - a generator for TDLib API classes.
 
@@ -255,7 +259,7 @@ This library contains automatically generated Haskell types for all TDLib API me
 
 TDLib can be used from the Nim programming language.
 
-See [telenim](https://github.com/Yardanico/telenim) for example of such usage and a Nim wrapper for TDLib.
+See [telenim](https://github.com/Ethosa/telenim) for example of such usage and a Nim wrapper for TDLib.
 
 <a name="clojure"></a>
 ## Using TDLib in Clojure projects
@@ -301,6 +305,15 @@ TDLib can be used from the C programming language through the [JSON](https://git
 See [easy-tg](https://github.com/Trumeet/easy-tg) for an example of such usage.
 
 You can also try to use our [C](https://github.com/tdlight-team/tdlight/blob/master/td/telegram/td_c_client.h) client, which was used by the private TDLib-based version of [telegram-cli](https://github.com/vysheng/tg).
+
+<a name="assembly"></a>
+## Using TDLib in Assembly projects
+
+TDLib can be used from Assembly through the [JSON](https://github.com/tdlib/td#using-json) interface.
+
+See [nasm_tdjson_example](https://gist.github.com/isopen/41481eda87db2e6426af75be9d1f3748).
+
+You can also see [gas_tdjson_example](https://gist.github.com/isopen/25c4829daffb3880a32fac1f85f5f888), [arm_tdjson_example](https://gist.github.com/isopen/c00f09d643ce65e465637f812a79695b), [arm64_tdjson_example](https://gist.github.com/isopen/cd11dd0cf7cbf2672ac9d7b78d8565eb).
 
 <a name="g"></a>
 ## Using TDLib from G projects

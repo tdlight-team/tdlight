@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -27,6 +27,7 @@ namespace td {
 class DcAuthManager;
 class MultiSequenceDispatcher;
 class NetQueryDelayer;
+class NetQueryVerifier;
 class PublicRsaKeyWatchdog;
 class SessionMultiProxy;
 
@@ -56,10 +57,13 @@ class NetQueryDispatcher {
   void set_main_dc_id(int32 new_main_dc_id);
   void check_authorization_is_ok();
 
+  void set_verification_token(int64 verification_id, string &&token, Promise<Unit> &&promise);
+
  private:
   std::atomic<bool> stop_flag_{false};
   bool need_destroy_auth_key_{false};
   ActorOwn<NetQueryDelayer> delayer_;
+  ActorOwn<NetQueryVerifier> verifier_;
   ActorOwn<DcAuthManager> dc_auth_manager_;
   ActorOwn<MultiSequenceDispatcher> sequence_dispatcher_;
   struct Dc {
@@ -79,17 +83,17 @@ class NetQueryDispatcher {
   std::atomic<int32> main_dc_id_{1};
 #endif
   ActorOwn<PublicRsaKeyWatchdog> public_rsa_key_watchdog_;
-  std::mutex main_dc_id_mutex_;
+  std::mutex mutex_;
   std::shared_ptr<Guard> td_guard_;
 
   Status wait_dc_init(DcId dc_id, bool force);
   bool is_dc_inited(int32 raw_dc_id);
 
-  static int32 get_main_session_scheduler_id();
   static int32 get_session_count();
   static bool get_use_pfs();
 
   static void complete_net_query(NetQueryPtr net_query);
+  bool check_stop_flag(NetQueryPtr &net_query) const;
 
   void try_fix_migrate(NetQueryPtr &net_query);
 };

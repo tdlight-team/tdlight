@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -35,6 +35,15 @@ class StoryId {
       input_story_ids.emplace_back(story_id.get());
     }
     return input_story_ids;
+  }
+
+  static vector<StoryId> get_story_ids(const vector<int32> &input_story_ids) {
+    vector<StoryId> story_ids;
+    story_ids.reserve(input_story_ids.size());
+    for (auto &input_story_id : input_story_ids) {
+      story_ids.emplace_back(input_story_id);
+    }
+    return story_ids;
   }
 
   int32 get() const {

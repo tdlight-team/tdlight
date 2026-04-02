@@ -1,8 +1,7 @@
-if ((CMAKE_MAJOR_VERSION LESS 3) OR (CMAKE_VERSION VERSION_LESS "3.0.2"))
-  message(FATAL_ERROR "CMake >= 3.0.2 is required")
+if ((CMAKE_MAJOR_VERSION LESS 3) OR (CMAKE_VERSION VERSION_LESS "3.10"))
+  message(FATAL_ERROR "CMake >= 3.10 is required")
 endif()
 
-#SOURCE SETS
 set(TD_TEST_SOURCE
   ${CMAKE_CURRENT_SOURCE_DIR}/country_info.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/db.cpp
@@ -36,11 +35,10 @@ set(TESTS_MAIN
 #target_link_libraries(all_tests PRIVATE tdcore tdclient)
 
 if (NOT CMAKE_CROSSCOMPILING OR EMSCRIPTEN)
-  #Tests
   if (OPENSSL_FOUND)
     add_executable(test-crypto EXCLUDE_FROM_ALL crypto.cpp)
     target_include_directories(test-crypto SYSTEM PRIVATE ${OPENSSL_INCLUDE_DIR})
-    target_link_libraries(test-crypto PRIVATE ${OPENSSL_CRYPTO_LIBRARY} ${CMAKE_DL_LIBS} ${ZLIB_LIBRARIES} tdutils tdcore)
+    target_link_libraries(test-crypto PRIVATE ${OPENSSL_CRYPTO_LIBRARY} ${CMAKE_DL_LIBS} ${ZLIB_LIBRARIES} tdutils tdmtproto)
 
     if (WIN32)
       if (MINGW)
@@ -64,7 +62,7 @@ if (NOT CMAKE_CROSSCOMPILING OR EMSCRIPTEN)
   target_include_directories(test-tdutils PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
   target_link_libraries(test-tdutils PRIVATE tdutils)
   target_link_libraries(run_all_tests PRIVATE tdcore tdclient)
-  target_link_libraries(test-online PRIVATE tdcore tdclient tdutils tdactor)
+  target_link_libraries(test-online PRIVATE tdcore tdjson_private tdclient tdutils tdactor)
 
   if (CLANG)
 #    add_executable(fuzz_url fuzz_url.cpp)

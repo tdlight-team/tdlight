@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -7,12 +7,12 @@
 #include "td/telegram/BotMenuButton.h"
 
 #include "td/telegram/AuthManager.h"
-#include "td/telegram/ContactsManager.h"
 #include "td/telegram/Global.h"
 #include "td/telegram/LinkManager.h"
 #include "td/telegram/misc.h"
 #include "td/telegram/Td.h"
 #include "td/telegram/telegram_api.h"
+#include "td/telegram/UserManager.h"
 
 #include "td/utils/buffer.h"
 #include "td/utils/logging.h"
@@ -29,7 +29,7 @@ class SetBotMenuButtonQuery final : public Td::ResultHandler {
   }
 
   void send(UserId user_id, telegram_api::object_ptr<telegram_api::BotMenuButton> input_bot_menu_button) {
-    auto input_user = user_id.is_valid() ? td_->contacts_manager_->get_input_user(user_id).move_as_ok()
+    auto input_user = user_id.is_valid() ? td_->user_manager_->get_input_user(user_id).move_as_ok()
                                          : make_tl_object<telegram_api::inputUserEmpty>();
     send_query(G()->net_query_creator().create(
         telegram_api::bots_setBotMenuButton(std::move(input_user), std::move(input_bot_menu_button))));
@@ -61,7 +61,7 @@ class GetBotMenuButtonQuery final : public Td::ResultHandler {
   }
 
   void send(UserId user_id) {
-    auto input_user = user_id.is_valid() ? td_->contacts_manager_->get_input_user(user_id).move_as_ok()
+    auto input_user = user_id.is_valid() ? td_->user_manager_->get_input_user(user_id).move_as_ok()
                                          : make_tl_object<telegram_api::inputUserEmpty>();
     send_query(G()->net_query_creator().create(telegram_api::bots_getBotMenuButton(std::move(input_user))));
   }
@@ -126,7 +126,7 @@ td_api::object_ptr<td_api::botMenuButton> get_bot_menu_button_object(Td *td, con
 void set_menu_button(Td *td, UserId user_id, td_api::object_ptr<td_api::botMenuButton> &&menu_button,
                      Promise<Unit> &&promise) {
   if (!user_id.is_valid() && user_id != UserId()) {
-    return promise.set_error(Status::Error(400, "User not found"));
+    return promise.set_error(400, "User not found");
   }
 
   telegram_api::object_ptr<telegram_api::BotMenuButton> input_bot_menu_button;
@@ -134,19 +134,19 @@ void set_menu_button(Td *td, UserId user_id, td_api::object_ptr<td_api::botMenuB
     input_bot_menu_button = telegram_api::make_object<telegram_api::botMenuButtonCommands>();
   } else if (menu_button->text_.empty()) {
     if (menu_button->url_ != "default") {
-      return promise.set_error(Status::Error(400, "Menu button text must be non-empty"));
+      return promise.set_error(400, "Menu button text must be non-empty");
     }
     input_bot_menu_button = telegram_api::make_object<telegram_api::botMenuButtonDefault>();
   } else {
     if (!clean_input_string(menu_button->text_)) {
-      return promise.set_error(Status::Error(400, "Menu button text must be encoded in UTF-8"));
+      return promise.set_error(400, "Menu button text must be encoded in UTF-8");
     }
     if (!clean_input_string(menu_button->url_)) {
-      return promise.set_error(Status::Error(400, "Menu button URL must be encoded in UTF-8"));
+      return promise.set_error(400, "Menu button URL must be encoded in UTF-8");
     }
     auto r_url = LinkManager::check_link(menu_button->url_, true, !G()->is_test_dc());
     if (r_url.is_error()) {
-      return promise.set_error(Status::Error(400, PSLICE() << "Menu button Web App " << r_url.error().message()));
+      return promise.set_error(400, PSLICE() << "Menu button Web App " << r_url.error().message());
     }
     input_bot_menu_button = telegram_api::make_object<telegram_api::botMenuButton>(menu_button->text_, r_url.ok());
   }
@@ -156,7 +156,7 @@ void set_menu_button(Td *td, UserId user_id, td_api::object_ptr<td_api::botMenuB
 
 void get_menu_button(Td *td, UserId user_id, Promise<td_api::object_ptr<td_api::botMenuButton>> &&promise) {
   if (!user_id.is_valid() && user_id != UserId()) {
-    return promise.set_error(Status::Error(400, "User not found"));
+    return promise.set_error(400, "User not found");
   }
 
   td->create_handler<GetBotMenuButtonQuery>(std::move(promise))->send(user_id);

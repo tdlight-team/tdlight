@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -33,41 +33,74 @@ class AuthManager final : public NetActor {
   }
 
   bool is_authorized() const;
+
   bool was_authorized() const;
+
   void get_state(uint64 query_id);
 
   void set_phone_number(uint64 query_id, string phone_number,
                         td_api::object_ptr<td_api::phoneNumberAuthenticationSettings> settings);
+
+  void check_premium_purchase(uint64 query_id, string currency, int64 amount);
+
+  void set_premium_purchase_transaction(uint64 query_id, td_api::object_ptr<td_api::StoreTransaction> &&transaction,
+                                        bool is_restore, string currency, int64 amount);
+
   void set_firebase_token(uint64 query_id, string token);
+
+  void report_missing_code(uint64 query_id, string mobile_network_code);
+
   void set_email_address(uint64 query_id, string email_address);
-  void resend_authentication_code(uint64 query_id);
+
+  void resend_authentication_code(uint64 query_id, td_api::object_ptr<td_api::ResendCodeReason> &&reason);
+
   void check_email_code(uint64 query_id, EmailVerification &&code);
+
   void reset_email_address(uint64 query_id);
+
   void check_code(uint64 query_id, string code);
+
   void register_user(uint64 query_id, string first_name, string last_name, bool disable_notification);
+
   void request_qr_code_authentication(uint64 query_id, vector<UserId> other_user_ids);
+
+  void on_init_passkey_login(int32 dc_id, uint64 main_auth_key_id);
+
+  void finish_passkey_login(uint64 query_id, const string &passkey_id, const string &client_data,
+                            const string &authenticator_data, const string &signature, const string &user_handle);
+
   void check_bot_token(uint64 query_id, string bot_token);
+
   void check_password(uint64 query_id, string password);
+
   void request_password_recovery(uint64 query_id);
+
   void check_password_recovery_code(uint64 query_id, string code);
+
   void recover_password(uint64 query_id, string code, string new_password, string new_hint);
+
   void log_out(uint64 query_id);
+
   void delete_account(uint64 query_id, string reason, string password);
 
   void on_update_login_token();
 
+  void on_update_sent_code(telegram_api::object_ptr<telegram_api::auth_SentCode> &&sent_code_ptr);
+
   void on_authorization_lost(string source);
+
   void on_closing(bool destroy_flag);
 
   // can return nullptr if state isn't initialized yet
   tl_object_ptr<td_api::AuthorizationState> get_current_authorization_state_object() const;
 
  private:
-  static constexpr size_t MAX_NAME_LENGTH = 64;  // server side limit
+  static constexpr size_t MAX_NAME_LENGTH = 64;  // server-side limit
 
   enum class State : int32 {
     None,
     WaitPhoneNumber,
+    WaitPremiumPurchase,
     WaitCode,
     WaitQrCodeConfirmation,
     WaitPassword,
@@ -85,11 +118,14 @@ class AuthManager final : public NetActor {
     SignIn,
     SignUp,
     SendCode,
+    CheckPremiumPurchase,
+    SetPremiumPurchaseTransaction,
     SendEmailCode,
     VerifyEmailAddress,
     ResetEmailAddress,
     RequestQrCode,
     ImportQrCode,
+    FinishPasskeyLogin,
     GetPassword,
     CheckPassword,
     RequestPasswordRecovery,
@@ -120,6 +156,24 @@ class AuthManager final : public NetActor {
     void parse(ParserT &parser);
   };
 
+  struct PasskeyParameters {
+    string passkey_id_;
+    string client_data_;
+    string authenticator_data_;
+    string signature_;
+    string user_handle_;
+
+    PasskeyParameters() = default;
+    PasskeyParameters(const string &passkey_id, const string &client_data, const string &authenticator_data,
+                      const string &signature, const string &user_handle)
+        : passkey_id_(passkey_id)
+        , client_data_(client_data)
+        , authenticator_data_(authenticator_data)
+        , signature_(signature)
+        , user_handle_(user_handle) {
+    }
+  };
+
   struct DbState;
 
   bool load_state();
@@ -128,9 +182,14 @@ class AuthManager final : public NetActor {
   ActorShared<> parent_;
 
   // STATE
-  // from contructor
+  // from constructor
   int32 api_id_;
   string api_hash_;
+
+  // State::WaitPremiumPurchase
+  string store_product_id_;
+  string support_email_address_;
+  string support_email_subject_;
 
   // State::WaitEmailAddress
   bool allow_apple_id_ = false;
@@ -175,10 +234,15 @@ class AuthManager final : public NetActor {
 
   bool checking_password_ = false;
   bool was_qr_code_request_ = false;
+  bool was_passkey_login_request_ = false;
   bool was_check_bot_token_ = false;
   bool is_bot_ = false;
   uint64 net_query_id_ = 0;
   NetQueryType net_query_type_ = NetQueryType::None;
+
+  PasskeyParameters passkey_parameters_;
+  int32 passkey_dc_id_ = 0;
+  int64 passkey_auth_key_id_ = 0;
 
   vector<uint64> pending_get_authorization_state_requests_;
 
@@ -198,15 +262,20 @@ class AuthManager final : public NetActor {
   void send_log_out_query();
   void destroy_auth_keys();
 
+  void send_finish_passkey_login_query();
+
   void on_account_banned() const;
 
   void on_sent_code(telegram_api::object_ptr<telegram_api::auth_SentCode> &&sent_code_ptr);
 
   void on_send_code_result(NetQueryPtr &&net_query);
+  void on_check_premium_purchase_result(NetQueryPtr &&net_query);
+  void on_set_premium_purchase_transaction_result(NetQueryPtr &&net_query);
   void on_send_email_code_result(NetQueryPtr &&net_query);
   void on_verify_email_address_result(NetQueryPtr &&net_query);
   void on_reset_email_address_result(NetQueryPtr &&net_query);
   void on_request_qr_code_result(NetQueryPtr &&net_query, bool is_import);
+  void on_finish_passkey_login_result(NetQueryPtr &&net_query);
   void on_get_password_result(NetQueryPtr &&net_query);
   void on_request_password_recovery_result(NetQueryPtr &&net_query);
   void on_check_password_recovery_code_result(NetQueryPtr &&net_query);

@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -28,6 +28,9 @@ class BackgroundFill {
   }
   BackgroundFill(int32 top_color, int32 bottom_color, int32 rotation_angle)
       : top_color_(top_color), bottom_color_(bottom_color), rotation_angle_(rotation_angle) {
+    if (get_type() != Type::Gradient) {
+      rotation_angle_ = 0;
+    }
   }
   BackgroundFill(int32 first_color, int32 second_color, int32 third_color, int32 fourth_color)
       : top_color_(first_color), bottom_color_(second_color), third_color_(third_color), fourth_color_(fourth_color) {
@@ -54,14 +57,21 @@ class BackgroundFill {
 
   friend bool operator==(const BackgroundFill &lhs, const BackgroundFill &rhs);
 
+  friend StringBuilder &operator<<(StringBuilder &string_builder, const BackgroundFill &fill);
+
   friend class BackgroundType;
 
   static Result<BackgroundFill> get_background_fill(Slice name);
 
   bool is_dark() const;
+
+ public:
+  static td_api::object_ptr<td_api::BackgroundFill> get_background_fill_object(const vector<int32> &colors);
 };
 
 bool operator==(const BackgroundFill &lhs, const BackgroundFill &rhs);
+
+StringBuilder &operator<<(StringBuilder &string_builder, const BackgroundFill &fill);
 
 class BackgroundType {
   enum class Type : int32 { Wallpaper, Pattern, Fill, ChatTheme };

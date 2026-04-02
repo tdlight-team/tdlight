@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -261,6 +261,9 @@ class TdExample {
                                 send_query(
                                     td_api::make_object<td_api::setAuthenticationPhoneNumber>(phone_number, nullptr),
                                     create_authentication_query_handler());
+                              },
+                              [this](td_api::authorizationStateWaitPremiumPurchase &) {
+                                std::cout << "Telegram Premium subscription is required" << std::endl;
                               },
                               [this](td_api::authorizationStateWaitEmailAddress &) {
                                 std::cout << "Enter email address: " << std::flush;

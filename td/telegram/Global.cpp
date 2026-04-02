@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -9,10 +9,12 @@
 #include "td/telegram/AuthManager.h"
 #include "td/telegram/net/ConnectionCreator.h"
 #include "td/telegram/net/NetQueryDispatcher.h"
+#include "td/telegram/net/NetQueryStats.h"
 #include "td/telegram/net/TempAuthKeyWatchdog.h"
 #include "td/telegram/OptionManager.h"
 #include "td/telegram/StateManager.h"
 #include "td/telegram/TdDb.h"
+#include "td/telegram/UpdatesManager.h"
 
 #include "td/utils/format.h"
 #include "td/utils/logging.h"
@@ -100,30 +102,38 @@ Status Global::init(ActorId<Td> td, unique_ptr<TdDb> td_db_ptr) {
     ServerTimeDiff saved_diff;
     unserialize(saved_diff, saved_diff_str).ensure();
 
-    saved_diff_ = saved_diff.diff;
-    saved_system_time_ = saved_diff.system_time;
+    if (saved_diff.diff > 1e10 || saved_diff.diff < -1e10 || saved_diff.system_time > 1e10 ||
+        saved_diff.system_time < 0) {
+      LOG(ERROR) << "Ignore definitely invalid saved server time difference " << saved_diff.diff << ' '
+                 << saved_diff.system_time;
+      server_time_difference_ = default_time_difference;
+    } else {
+      saved_diff_ = saved_diff.diff;
+      saved_system_time_ = saved_diff.system_time;
 
-    double diff = saved_diff.diff + default_time_difference;
-    if (saved_diff.system_time > system_time) {
-      double time_backwards_fix = saved_diff.system_time - system_time;
-      if (time_backwards_fix > 60) {
-        LOG(WARNING) << "Fix system time which went backwards: " << format::as_time(time_backwards_fix) << " "
-                     << tag("saved_system_time", saved_diff.system_time) << tag("system_time", system_time);
+      double diff = saved_diff.diff + default_time_difference;
+      if (saved_diff.system_time > system_time) {
+        double time_backwards_fix = saved_diff.system_time - system_time;
+        if (time_backwards_fix > 60) {
+          LOG(WARNING) << "Fix system time which went backwards: " << format::as_time(time_backwards_fix) << " "
+                       << tag("saved_system_time", saved_diff.system_time) << tag("system_time", system_time);
+        }
+        diff += time_backwards_fix;
+      } else if (saved_diff.system_time != 0) {
+        const double MAX_TIME_FORWARD =
+            367 * 86400;  // if more than 1 year has passed, the session is logged out anyway
+        if (saved_diff.system_time + MAX_TIME_FORWARD < system_time) {
+          double time_forward_fix = system_time - (saved_diff.system_time + MAX_TIME_FORWARD);
+          LOG(WARNING) << "Fix system time which went forward: " << format::as_time(time_forward_fix) << " "
+                       << tag("saved_system_time", saved_diff.system_time) << tag("system_time", system_time);
+          diff -= time_forward_fix;
+        }
+      } else if (saved_diff.diff >= 1500000000 && system_time >= 1500000000) {  // only for saved_diff.system_time == 0
+        diff = default_time_difference;
       }
-      diff += time_backwards_fix;
-    } else if (saved_diff.system_time != 0) {
-      const double MAX_TIME_FORWARD = 367 * 86400;  // if more than 1 year has passed, the session is logged out anyway
-      if (saved_diff.system_time + MAX_TIME_FORWARD < system_time) {
-        double time_forward_fix = system_time - (saved_diff.system_time + MAX_TIME_FORWARD);
-        LOG(WARNING) << "Fix system time which went forward: " << format::as_time(time_forward_fix) << " "
-                     << tag("saved_system_time", saved_diff.system_time) << tag("system_time", system_time);
-        diff -= time_forward_fix;
-      }
-    } else if (saved_diff.diff >= 1500000000 && system_time >= 1500000000) {  // only for saved_diff.system_time == 0
-      diff = default_time_difference;
+      LOG(DEBUG) << "LOAD: " << tag("server_time_difference", diff);
+      server_time_difference_ = diff;
     }
-    LOG(DEBUG) << "LOAD: " << tag("server_time_difference", diff);
-    server_time_difference_ = diff;
   }
   server_time_difference_was_updated_ = false;
   dns_time_difference_ = default_time_difference;
@@ -183,8 +193,8 @@ int32 Global::get_retry_after(int32 error_code, Slice error_message) {
 
 int32 Global::to_unix_time(double server_time) const {
   LOG_CHECK(1.0 <= server_time && server_time <= 2140000000.0)
-      << server_time << ' ' << Clocks::system() << ' ' << is_server_time_reliable() << ' '
-      << get_server_time_difference() << ' ' << Time::now() << ' ' << saved_diff_ << ' ' << saved_system_time_;
+      << server_time << ' ' << is_server_time_reliable() << ' ' << get_server_time_difference() << ' ' << Time::now()
+      << ' ' << saved_diff_ << ' ' << saved_system_time_;
   return static_cast<int32>(server_time);
 }
 
@@ -345,6 +355,10 @@ void Global::add_location_access_hash(double latitude, double longitude, int64 a
   }
 
   location_access_hashes_[get_location_key(latitude, longitude)] = access_hash;
+}
+
+void Global::notify_speed_limited(bool is_upload) {
+  send_closure(updates_manager_, &UpdatesManager::notify_speed_limited, is_upload);
 }
 
 double get_global_server_time() {

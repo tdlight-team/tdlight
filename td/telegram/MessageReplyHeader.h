@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -31,7 +31,7 @@ struct MessageReplyHeader {
   MessageReplyHeader() = default;
 
   MessageReplyHeader(Td *td, tl_object_ptr<telegram_api::MessageReplyHeader> &&reply_header_ptr, DialogId dialog_id,
-                     MessageId message_id, int32 date, bool can_have_thread);
+                     MessageId message_id, int32 date);
 };
 
 }  // namespace td

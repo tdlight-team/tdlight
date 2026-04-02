@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -9,17 +9,22 @@
 #include "td/telegram/AnimationsManager.h"
 #include "td/telegram/AttachMenuManager.h"
 #include "td/telegram/BackgroundManager.h"
+#include "td/telegram/BotInfoManager.h"
+#include "td/telegram/ChatManager.h"
 #include "td/telegram/ConfigManager.h"
-#include "td/telegram/ContactsManager.h"
 #include "td/telegram/DialogManager.h"
 #include "td/telegram/files/FileManager.h"
 #include "td/telegram/Global.h"
 #include "td/telegram/MessagesManager.h"
 #include "td/telegram/NotificationSettingsManager.h"
+#include "td/telegram/QuickReplyManager.h"
+#include "td/telegram/StarManager.h"
 #include "td/telegram/StickerSetId.h"
 #include "td/telegram/StickersManager.h"
 #include "td/telegram/StoryManager.h"
 #include "td/telegram/Td.h"
+#include "td/telegram/UserManager.h"
+#include "td/telegram/WebAppManager.h"
 #include "td/telegram/WebPageId.h"
 #include "td/telegram/WebPagesManager.h"
 
@@ -50,36 +55,53 @@ bool FileReferenceManager::is_file_reference_error(const Status &error) {
   return error.is_error() && error.code() == 400 && begins_with(error.message(), "FILE_REFERENCE_");
 }
 
-size_t FileReferenceManager::get_file_reference_error_pos(const Status &error) {
+FileReferenceManager::FileReferenceErrorSource FileReferenceManager::get_file_reference_error_source(
+    const Status &error) {
   if (!is_file_reference_error(error)) {
-    return 0;
+    return {0, false};
   }
   auto offset = Slice("FILE_REFERENCE_").size();
-  if (error.message().size() <= offset || !is_digit(error.message()[offset])) {
-    return 0;
+  Slice message = error.message();
+  if (message.size() <= offset) {
+    return {0, false};
   }
-  return to_integer<size_t>(error.message().substr(offset)) + 1;
+  message = message.substr(offset);
+  if (!is_digit(message[0])) {
+    if (message[0] == '_') {
+      message = message.substr(1);
+    }
+    return {0, begins_with(message, "COVER_")};
+  }
+  auto underscore_pos = message.find('_');
+  auto is_cover = underscore_pos != Slice::npos && begins_with(message.substr(underscore_pos + 1), "COVER_");
+  return {to_integer<size_t>(message) + 1, is_cover};
 }
 
 /*
-fileSourceMessage chat_id:int53 message_id:int53 = FileSource;           // repaired with get_message_from_server
-fileSourceUserProfilePhoto user_id:int53 photo_id:int64 = FileSource;    // repaired with photos.getUserPhotos
-fileSourceBasicGroupPhoto basic_group_id:int53 = FileSource;             // no need to repair
-fileSourceSupergroupPhoto supergroup_id:int53 = FileSource;              // no need to repair
-fileSourceWebPage url:string = FileSource;                               // repaired with messages.getWebPage
-fileSourceWallpapers = FileSource;                                       // can't be repaired
-fileSourceSavedAnimations = FileSource;                                  // repaired with messages.getSavedGifs
-fileSourceRecentStickers is_attached:Bool = FileSource;                  // repaired with messages.getRecentStickers, not reliable
-fileSourceFavoriteStickers = FileSource;                                 // repaired with messages.getFavedStickers, not reliable
-fileSourceBackground background_id:int64 access_hash:int64 = FileSource; // repaired with account.getWallPaper
-fileSourceBasicGroupFull basic_group_id:int53 = FileSource;              // repaired with messages.getFullChat
-fileSourceSupergroupFull supergroup_id:int53 = FileSource;               // repaired with messages.getFullChannel
-fileSourceAppConfig = FileSource;                                        // repaired with help.getAppConfig, not reliable
-fileSourceSavedRingtones = FileSource;                                   // repaired with account.getSavedRingtones
-fileSourceUserFull = FileSource;                                         // repaired with users.getFullUser
-fileSourceAttachmentMenuBot user_id:int53 = FileSource;                  // repaired with messages.getAttachMenuBot
-fileSourceWebApp user_id:int53 short_name:string = FileSource;           // repaired with messages.getAttachMenuBot
-fileSourceStory chat_id:int53 story_id:int32 = FileSource;               // repaired with stories.getStoriesByID
+fileSourceMessage chat_id:int53 message_id:int53 = FileSource;                             // get_message_from_server
+fileSourceUserProfilePhoto user_id:int53 photo_id:int64 = FileSource;                      // photos.getUserPhotos
+fileSourceBasicGroupPhoto basic_group_id:int53 = FileSource;                               // no need to repair
+fileSourceSupergroupPhoto supergroup_id:int53 = FileSource;                                // no need to repair
+fileSourceWebPage url:string = FileSource;                                                 // messages.getWebPage
+fileSourceWallpapers = FileSource;                                                         // can't be repaired
+fileSourceSavedAnimations = FileSource;                                                    // messages.getSavedGifs
+fileSourceRecentStickers is_attached:Bool = FileSource;                                    // messages.getRecentStickers, not reliable
+fileSourceFavoriteStickers = FileSource;                                                   // messages.getFavedStickers, not reliable
+fileSourceBackground background_id:int64 access_hash:int64 = FileSource;                   // account.getWallPaper
+fileSourceBasicGroupFull basic_group_id:int53 = FileSource;                                // messages.getFullChat
+fileSourceSupergroupFull supergroup_id:int53 = FileSource;                                 // messages.getFullChannel
+fileSourceAppConfig = FileSource;                                                          // help.getAppConfig, not reliable
+fileSourceSavedRingtones = FileSource;                                                     // account.getSavedRingtones
+fileSourceUserFull = FileSource;                                                           // users.getFullUser
+fileSourceAttachmentMenuBot user_id:int53 = FileSource;                                    // messages.getAttachMenuBot
+fileSourceWebApp user_id:int53 short_name:string = FileSource;                             // messages.getAttachMenuBot
+fileSourceStory chat_id:int53 story_id:int32 = FileSource;                                 // stories.getStoriesByID
+fileSourceQuickReplyMessage shortcut_id:int32 message_id:int53 = FileSource;               // messages.getQuickReplyMessages
+fileSourceStarTransaction chat_id:int53 transaction_id:string is_refund:Bool = FileSource; // payments.getStarsTransactionsByID
+fileSourceBotMediaPreview bot_user_id:int53 = FileSource;                                  // bots.getPreviewMedias
+fileSourceBotMediaPreviewInfo bot_user_id:int53 language_code:string = FileSource;         // bots.getPreviewMediaInfo
+fileSourceStoryAlbum chat_id:int53 story_album_id:int32 = FileSource;                      // stories.getAlbums, not reliable
+fileSourceSavedMusic user_id:int53 file_id:int32 = FileSource;                             // users.getSavedMusicByID
 */
 
 FileSourceId FileReferenceManager::get_current_file_source_id() const {
@@ -169,6 +191,39 @@ FileSourceId FileReferenceManager::create_story_file_source(StoryFullId story_fu
   return add_file_source_id(source, PSLICE() << story_full_id);
 }
 
+FileSourceId FileReferenceManager::create_quick_reply_message_file_source(QuickReplyMessageFullId message_full_id) {
+  FileSourceQuickReplyMessage source{message_full_id};
+  return add_file_source_id(source, PSLICE() << "quick reply " << message_full_id);
+}
+
+FileSourceId FileReferenceManager::create_star_transaction_file_source(DialogId dialog_id, const string &transaction_id,
+                                                                       bool is_refund) {
+  FileSourceStarTransaction source{dialog_id, transaction_id, is_refund};
+  return add_file_source_id(source, PSLICE() << "star transaction " << transaction_id << " in " << dialog_id);
+}
+
+FileSourceId FileReferenceManager::create_bot_media_preview_file_source(UserId bot_user_id) {
+  FileSourceBotMediaPreview source{bot_user_id};
+  return add_file_source_id(source, PSLICE() << "bot media preview " << bot_user_id);
+}
+
+FileSourceId FileReferenceManager::create_bot_media_preview_info_file_source(UserId bot_user_id,
+                                                                             const string &language_code) {
+  FileSourceBotMediaPreviewInfo source{bot_user_id, language_code};
+  return add_file_source_id(source, PSLICE() << "bot media preview info " << bot_user_id << " for " << language_code);
+}
+
+FileSourceId FileReferenceManager::create_story_album_file_source(StoryAlbumFullId story_album_full_id) {
+  FileSourceStoryAlbum source{story_album_full_id};
+  return add_file_source_id(source, PSLICE() << story_album_full_id);
+}
+
+FileSourceId FileReferenceManager::create_user_saved_music_file_source(UserId user_id, int64 document_id,
+                                                                       int64 access_hash) {
+  FileSourceUserSavedMusic source{document_id, access_hash, user_id};
+  return add_file_source_id(source, PSLICE() << "saved music " << document_id << " of " << user_id);
+}
+
 FileReferenceManager::Node &FileReferenceManager::add_node(NodeId node_id) {
   CHECK(node_id.is_valid());
   auto &node = nodes_[node_id];
@@ -178,21 +233,23 @@ FileReferenceManager::Node &FileReferenceManager::add_node(NodeId node_id) {
   return *node;
 }
 
-bool FileReferenceManager::add_file_source(NodeId node_id, FileSourceId file_source_id) {
+bool FileReferenceManager::add_file_source(NodeId node_id, FileSourceId file_source_id, const char *source) {
   auto &node = add_node(node_id);
   bool is_added = node.file_source_ids.add(file_source_id);
-  VLOG(file_references) << "Add " << (is_added ? "new" : "old") << ' ' << file_source_id << " for file " << node_id;
+  VLOG(file_references) << "Add " << (is_added ? "new" : "old") << ' ' << file_source_id << " for file " << node_id
+                        << " from " << source;
   return is_added;
 }
 
-bool FileReferenceManager::remove_file_source(NodeId node_id, FileSourceId file_source_id) {
+bool FileReferenceManager::remove_file_source(NodeId node_id, FileSourceId file_source_id, const char *source) {
   CHECK(node_id.is_valid());
   auto *node = nodes_.get_pointer(node_id);
   bool is_removed = node != nullptr && node->file_source_ids.remove(file_source_id);
   if (is_removed) {
-    VLOG(file_references) << "Remove " << file_source_id << " from file " << node_id;
+    VLOG(file_references) << "Remove " << file_source_id << " from file " << node_id << " from " << source;
   } else {
-    VLOG(file_references) << "Can't find " << file_source_id << " from file " << node_id << " to remove it";
+    VLOG(file_references) << "Can't find " << file_source_id << " from file " << node_id << " to remove it from "
+                          << source;
   }
   return is_removed;
 }
@@ -270,9 +327,9 @@ void FileReferenceManager::run_node(NodeId node_id) {
     VLOG(file_references) << "Have no more file sources to repair file reference for file " << node_id;
     for (auto &p : node.query->promises) {
       if (node.file_source_ids.empty()) {
-        p.set_error(Status::Error(400, "File source is not found"));
+        p.set_error(400, "File source is not found");
       } else {
-        p.set_error(Status::Error(429, "Too Many Requests: retry after 1"));
+        p.set_error(429, "Too Many Requests: retry after 1");
       }
     }
     node.query = {};
@@ -281,7 +338,7 @@ void FileReferenceManager::run_node(NodeId node_id) {
   if (node.last_successful_repair_time >= Time::now() - 60) {
     VLOG(file_references) << "Recently repaired file reference for file " << node_id << ", do not try again";
     for (auto &p : node.query->promises) {
-      p.set_error(Status::Error(429, "Too Many Requests: retry after 60"));
+      p.set_error(429, "Too Many Requests: retry after 60");
     }
     node.query = {};
     return;
@@ -317,20 +374,20 @@ void FileReferenceManager::send_query(Destination dest, FileSourceId file_source
                            std::move(promise), "FileSourceMessage", nullptr);
       },
       [&](const FileSourceUserPhoto &source) {
-        send_closure_later(G()->contacts_manager(), &ContactsManager::reload_user_profile_photo, source.user_id,
+        send_closure_later(G()->user_manager(), &UserManager::reload_user_profile_photo, source.user_id,
                            source.photo_id, std::move(promise));
       },
       [&](const FileSourceChatPhoto &source) {
-        send_closure_later(G()->contacts_manager(), &ContactsManager::reload_chat, source.chat_id, std::move(promise),
+        send_closure_later(G()->chat_manager(), &ChatManager::reload_chat, source.chat_id, std::move(promise),
                            "FileSourceChatPhoto");
       },
       [&](const FileSourceChannelPhoto &source) {
-        send_closure_later(G()->contacts_manager(), &ContactsManager::reload_channel, source.channel_id,
-                           std::move(promise), "FileSourceChannelPhoto");
+        send_closure_later(G()->chat_manager(), &ChatManager::reload_channel, source.channel_id, std::move(promise),
+                           "FileSourceChannelPhoto");
       },
-      [&](const FileSourceWallpapers &source) { promise.set_error(Status::Error("Can't repair old wallpapers")); },
+      [&](const FileSourceWallpapers &source) { promise.set_error("Can't repair old wallpapers"); },
       [&](const FileSourceWebPage &source) {
-        send_closure_later(G()->web_pages_manager(), &WebPagesManager::reload_web_page_by_url, source.url,
+        send_closure_later(G()->web_pages_manager(), &WebPagesManager::reload_web_page_by_url, source.url, false,
                            PromiseCreator::lambda([promise = std::move(promise)](Result<WebPageId> &&result) mutable {
                              if (result.is_error()) {
                                promise.set_error(result.move_as_error());
@@ -354,11 +411,11 @@ void FileReferenceManager::send_query(Destination dest, FileSourceId file_source
                            source.access_hash, std::move(promise));
       },
       [&](const FileSourceChatFull &source) {
-        send_closure_later(G()->contacts_manager(), &ContactsManager::reload_chat_full, source.chat_id,
-                           std::move(promise), "FileSourceChatFull");
+        send_closure_later(G()->chat_manager(), &ChatManager::reload_chat_full, source.chat_id, std::move(promise),
+                           "FileSourceChatFull");
       },
       [&](const FileSourceChannelFull &source) {
-        send_closure_later(G()->contacts_manager(), &ContactsManager::reload_channel_full, source.channel_id,
+        send_closure_later(G()->chat_manager(), &ChatManager::reload_channel_full, source.channel_id,
                            std::move(promise), "FileSourceChannelFull");
       },
       [&](const FileSourceAppConfig &source) {
@@ -369,20 +426,45 @@ void FileReferenceManager::send_query(Destination dest, FileSourceId file_source
                            std::move(promise));
       },
       [&](const FileSourceUserFull &source) {
-        send_closure_later(G()->contacts_manager(), &ContactsManager::reload_user_full, source.user_id,
-                           std::move(promise), "FileSourceUserFull");
+        send_closure_later(G()->user_manager(), &UserManager::reload_user_full, source.user_id, std::move(promise),
+                           "FileSourceUserFull");
       },
       [&](const FileSourceAttachMenuBot &source) {
         send_closure_later(G()->attach_menu_manager(), &AttachMenuManager::reload_attach_menu_bot, source.user_id,
                            std::move(promise));
       },
       [&](const FileSourceWebApp &source) {
-        send_closure_later(G()->attach_menu_manager(), &AttachMenuManager::reload_web_app, source.user_id,
-                           source.short_name, std::move(promise));
+        send_closure_later(G()->web_app_manager(), &WebAppManager::reload_web_app, source.user_id, source.short_name,
+                           std::move(promise));
       },
       [&](const FileSourceStory &source) {
         send_closure_later(G()->story_manager(), &StoryManager::reload_story, source.story_full_id, std::move(promise),
                            "FileSourceStory");
+      },
+      [&](const FileSourceQuickReplyMessage &source) {
+        send_closure_later(G()->quick_reply_manager(), &QuickReplyManager::reload_quick_reply_message,
+                           source.message_full_id.get_quick_reply_shortcut_id(),
+                           source.message_full_id.get_message_id(), std::move(promise));
+      },
+      [&](const FileSourceStarTransaction &source) {
+        send_closure_later(G()->star_manager(), &StarManager::reload_star_transaction, source.dialog_id,
+                           source.transaction_id, source.is_refund, std::move(promise));
+      },
+      [&](const FileSourceBotMediaPreview &source) {
+        send_closure_later(G()->bot_info_manager(), &BotInfoManager::reload_bot_media_previews, source.bot_user_id,
+                           std::move(promise));
+      },
+      [&](const FileSourceBotMediaPreviewInfo &source) {
+        send_closure_later(G()->bot_info_manager(), &BotInfoManager::reload_bot_media_preview_info, source.bot_user_id,
+                           source.language_code, std::move(promise));
+      },
+      [&](const FileSourceStoryAlbum &source) {
+        send_closure_later(G()->story_manager(), &StoryManager::reload_story_album, source.story_album_full_id,
+                           std::move(promise), "FileSourceStoryAlbum");
+      },
+      [&](const FileSourceUserSavedMusic &source) {
+        send_closure_later(G()->user_manager(), &UserManager::reload_user_saved_music, source.user_id,
+                           source.document_id, source.access_hash, std::move(promise));
       }));
 }
 
@@ -463,7 +545,7 @@ void FileReferenceManager::reload_photo(PhotoSizeSource source, Promise<Unit> pr
     case PhotoSizeSource::Type::Legacy:
     case PhotoSizeSource::Type::FullLegacy:
     case PhotoSizeSource::Type::Thumbnail:
-      promise.set_error(Status::Error("Unexpected PhotoSizeSource type"));
+      promise.set_error("Unexpected PhotoSizeSource type");
       break;
     default:
       UNREACHABLE();
@@ -479,7 +561,7 @@ void FileReferenceManager::get_file_search_text(FileSourceId file_source_id, str
         send_closure_later(G()->messages_manager(), &MessagesManager::get_message_file_search_text,
                            source.message_full_id, std::move(unique_file_id), std::move(promise));
       },
-      [&](const auto &source) { promise.set_error(Status::Error(500, "Unsupported file source")); }));
+      [&](const auto &source) { promise.set_error(500, "Unsupported file source"); }));
 }
 
 td_api::object_ptr<td_api::message> FileReferenceManager::get_message_object(FileSourceId file_source_id) const {

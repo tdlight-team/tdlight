@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -51,9 +51,9 @@ class PollManager final : public Actor {
 
   static bool is_local_poll_id(PollId poll_id);
 
-  PollId create_poll(string &&question, vector<string> &&options, bool is_anonymous, bool allow_multiple_answers,
-                     bool is_quiz, int32 correct_option_id, FormattedText &&explanation, int32 open_period,
-                     int32 close_date, bool is_closed);
+  PollId create_poll(FormattedText &&question, vector<FormattedText> &&options, bool is_anonymous,
+                     bool allow_multiple_answers, bool is_quiz, int32 correct_option_id, FormattedText &&explanation,
+                     int32 open_period, int32 close_date, bool is_closed);
 
   void register_poll(PollId poll_id, MessageFullId message_full_id, const char *source);
 
@@ -73,14 +73,14 @@ class PollManager final : public Actor {
                        Promise<Unit> &&promise);
 
   void get_poll_voters(PollId poll_id, MessageFullId message_full_id, int32 option_id, int32 offset, int32 limit,
-                       Promise<td_api::object_ptr<td_api::messageSenders>> &&promise);
+                       Promise<td_api::object_ptr<td_api::pollVoters>> &&promise);
 
   void stop_poll(PollId poll_id, MessageFullId message_full_id, unique_ptr<ReplyMarkup> &&reply_markup,
                  Promise<Unit> &&promise);
 
   void stop_local_poll(PollId poll_id);
 
-  PollId dup_poll(PollId poll_id);
+  PollId dup_poll(DialogId dialog_id, PollId poll_id);
 
   bool has_input_media(PollId poll_id) const;
 
@@ -105,7 +105,7 @@ class PollManager final : public Actor {
 
  private:
   struct PollOption {
-    string text_;
+    FormattedText text_;
     string data_;
     int32 voter_count_ = 0;
     bool is_chosen_ = false;
@@ -117,7 +117,7 @@ class PollManager final : public Actor {
   };
 
   struct Poll {
-    string question_;
+    FormattedText question_;
     vector<PollOption> options_;
     vector<DialogId> recent_voter_dialog_ids_;
     vector<std::pair<ChannelId, MinChannel>> recent_voter_min_channels_;
@@ -140,13 +140,13 @@ class PollManager final : public Actor {
   };
 
   struct PollOptionVoters {
-    vector<DialogId> voter_dialog_ids_;
+    vector<std::pair<DialogId, int32>> voters_;
     string next_offset_;
-    vector<Promise<td_api::object_ptr<td_api::messageSenders>>> pending_queries_;
+    vector<Promise<td_api::object_ptr<td_api::pollVoters>>> pending_queries_;
     bool was_invalidated_ = false;  // the list needs to be invalidated when voters are changed
   };
 
-  static constexpr int32 MAX_GET_POLL_VOTERS = 50;  // server side limit
+  static constexpr int32 MAX_GET_POLL_VOTERS = 50;  // server-side limit
   static constexpr int32 UNLOAD_POLL_DELAY = 600;   // some reasonable value
 
   class SetPollAnswerLogEvent;
@@ -218,8 +218,8 @@ class PollManager final : public Actor {
 
   PollOptionVoters &get_poll_option_voters(const Poll *poll, PollId poll_id, int32 option_id);
 
-  td_api::object_ptr<td_api::messageSenders> get_poll_voters_object(int32 total_count,
-                                                                    const vector<DialogId> &voter_dialog_ids) const;
+  td_api::object_ptr<td_api::pollVoters> get_poll_voters_object(int32 total_count,
+                                                                const vector<std::pair<DialogId, int32>> &voters) const;
 
   void on_get_poll_voters(PollId poll_id, int32 option_id, string offset, int32 limit,
                           Result<tl_object_ptr<telegram_api::messages_votesList>> &&result);

@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -9,6 +9,8 @@
 #include "td/telegram/Global.h"
 #include "td/telegram/logevent/LogEvent.h"
 #include "td/telegram/MessageId.h"
+#include "td/telegram/net/NetQuery.h"
+#include "td/telegram/net/NetQueryCreator.h"
 #include "td/telegram/secret_api.h"
 #include "td/telegram/SecretChatActor.h"
 #include "td/telegram/SecretChatDb.h"
@@ -236,14 +238,12 @@ class messages_dhConfig final {
   }
 
   void store(TlStorerCalcLength &s) const {
-    (void)sizeof(s);
     TlStoreBinary::store(g_, s);
     TlStoreString::store(p_, s);
     TlStoreBinary::store(version_, s);
     TlStoreString::store(random_, s);
   }
   void store(TlStorerUnsafe &s) const {
-    (void)sizeof(s);
     TlStoreBinary::store(g_, s);
     TlStoreString::store(p_, s);
     TlStoreBinary::store(version_, s);
@@ -281,7 +281,6 @@ class encryptedChat final {
   }
 
   void store(TlStorerCalcLength &s) const {
-    (void)sizeof(s);
     TlStoreBinary::store(id_, s);
     TlStoreBinary::store(access_hash_, s);
     TlStoreBinary::store(date_, s);
@@ -292,7 +291,6 @@ class encryptedChat final {
   }
 
   void store(TlStorerUnsafe &s) const {
-    (void)sizeof(s);
     TlStoreBinary::store(id_, s);
     TlStoreBinary::store(access_hash_, s);
     TlStoreBinary::store(date_, s);
@@ -319,12 +317,10 @@ class messages_sentEncryptedMessage final {
   }
 
   void store(TlStorerCalcLength &s) const {
-    (void)sizeof(s);
     TlStoreBinary::store(date_, s);
   }
 
   void store(TlStorerUnsafe &s) const {
-    (void)sizeof(s);
     TlStoreBinary::store(date_, s);
   }
 };
@@ -530,7 +526,7 @@ class FakeSecretChatContext final : public SecretChatActor::Context {
     return false;
   }
 
-  // We don't want to expose the whole NetQueryDispatcher, MessagesManager and ContactsManager.
+  // We don't want to expose the whole NetQueryDispatcher, MessagesManager and UserManager.
   // So it is more clear which parts of MessagesManager is really used. And it is much easier to create tests.
   void send_net_query(NetQueryPtr query, ActorShared<NetQueryCallback> callback, bool ordered) final;
 
@@ -637,7 +633,7 @@ class Master final : public Actor {
     int32 binlog_generation_ = 0;
     void sync_binlog(int32 binlog_generation, Promise<> promise) {
       if (binlog_generation != binlog_generation_) {
-        return promise.set_error(Status::Error("Binlog generation mismatch"));
+        return promise.set_error("Binlog generation mismatch");
       }
       binlog_->force_sync(std::move(promise), "sync_binlog");
     }
@@ -888,8 +884,8 @@ class Master final : public Actor {
     LOG(INFO) << "Send message: " << tag("id", id) << tag("text", text) << tag("random_id", random_id);
     sent_messages_[random_id] = Message{id, text};
     send_closure(get_by_id(id), &SecretChatProxy::send_message,
-                 secret_api::make_object<secret_api::decryptedMessage>(0, false /*ignored*/, random_id, 0, text, Auto(),
-                                                                       Auto(), Auto(), Auto(), 0));
+                 secret_api::make_object<secret_api::decryptedMessage>(0, false, random_id, 0, text, Auto(), Auto(),
+                                                                       Auto(), Auto(), 0));
   }
   void process_net_query(my_api::messages_sendEncryptedService &&message, NetQueryPtr net_query,
                          ActorShared<NetQueryCallback> callback) {
@@ -996,10 +992,10 @@ void FakeSecretChatContext::on_delete_messages(std::vector<int64> random_id, Pro
   promise.set_value(Unit());
 }
 void FakeSecretChatContext::on_flush_history(bool, MessageId, Promise<> promise) {
-  promise.set_error(Status::Error("Unsupported"));
+  promise.set_error("Unsupported");
 }
 void FakeSecretChatContext::on_read_message(int64, Promise<> promise) {
-  promise.set_error(Status::Error("Unsupported"));
+  promise.set_error("Unsupported");
 }
 
 TEST(Secret, go) {

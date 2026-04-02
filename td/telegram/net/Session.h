@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -32,7 +32,6 @@
 
 #include <array>
 #include <deque>
-#include <functional>
 #include <map>
 #include <memory>
 #include <utility>
@@ -136,20 +135,21 @@ class Session final
   FlatHashSet<mtproto::MessageId, mtproto::MessageIdHash> unknown_queries_;
   vector<mtproto::MessageId> to_cancel_message_ids_;
 
-  // Do not invalidate iterators of these two containers!
-  // TODO: better data structures
-  struct PriorityQueue {
-    void push(NetQueryPtr query);
-    NetQueryPtr pop();
-    bool empty() const;
+  class PendingQueries {
+    VectorQueue<NetQueryPtr> regular_queries_;
+    VectorQueue<NetQueryPtr> high_priority_queries_;
 
-   private:
-    std::map<int8, VectorQueue<NetQueryPtr>, std::greater<>> queries_;
+   public:
+    void push(NetQueryPtr query);
+
+    NetQueryPtr pop();
+
+    bool empty() const;
   };
-  PriorityQueue pending_queries_;
+  PendingQueries pending_queries_;
   std::map<mtproto::MessageId, Query> sent_queries_;
   std::deque<NetQueryPtr> pending_invoke_after_queries_;
-  ListNode sent_queries_list_;
+  ListNode sent_query_list_;
 
   struct ConnectionInfo {
     int8 connection_id_ = 0;
@@ -162,7 +162,7 @@ class Session final
     double created_at_ = 0;
   };
 
-  ConnectionInfo *current_info_;
+  ConnectionInfo *current_info_ = nullptr;
   ConnectionInfo main_connection_;
   ConnectionInfo long_poll_connection_;
   mtproto::ConnectionManager::ConnectionToken connection_token_;
@@ -171,7 +171,6 @@ class Session final
   unique_ptr<mtproto::RawConnection> cached_connection_;
 
   std::shared_ptr<Callback> callback_;
-  mtproto::AuthData auth_data_;
   bool use_pfs_{false};
   bool need_check_main_key_{false};
   TempAuthKeyWatchdog::RegisteredAuthKey registered_temp_auth_key_;
@@ -196,7 +195,11 @@ class Session final
   enum HandshakeId : int32 { MainAuthKeyHandshake = 0, TmpAuthKeyHandshake = 1 };
   std::array<HandshakeInfo, 2> handshake_info_;
 
-  double wakeup_at_;
+  double wakeup_at_ = 0.0;
+
+  // mtproto::AuthData should be the last field, because its size is about 32 KB
+  mtproto::AuthData auth_data_;
+
   void on_handshake_ready(Result<unique_ptr<mtproto::AuthKeyHandshake>> r_handshake);
   void create_gen_auth_key_actor(HandshakeId handshake_id);
   void auth_loop(double now);
@@ -205,7 +208,7 @@ class Session final
   void on_connected() final;
   void on_closed(Status status) final;
 
-  Status on_pong() final;
+  Status on_pong(double ping_time, double pong_time, double current_time) final;
 
   void on_network(bool network_flag, uint32 network_generation);
   void on_online(bool online_flag);
@@ -237,10 +240,10 @@ class Session final
   void flush_pending_invoke_after_queries();
   bool has_queries() const;
 
-  void dec_container(mtproto::MessageId container_message_id, Query *query);
-  void cleanup_container(mtproto::MessageId container_message_id, Query *query);
-  void mark_as_known(mtproto::MessageId message_id, Query *query);
-  void mark_as_unknown(mtproto::MessageId message_id, Query *query);
+  void dec_container(mtproto::MessageId container_message_id, const Query &query);
+  void cleanup_container(mtproto::MessageId container_message_id, const Query &query);
+  void mark_as_known(mtproto::MessageId message_id, Query &query);
+  void mark_as_unknown(mtproto::MessageId message_id, Query &query);
 
   void on_message_ack_impl(mtproto::MessageId container_message_id, int32 type);
   void on_message_ack_impl_inner(mtproto::MessageId message_id, int32 type, bool in_container);

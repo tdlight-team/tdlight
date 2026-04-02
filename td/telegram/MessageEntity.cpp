@@ -1,12 +1,11 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/telegram/MessageEntity.h"
 
-#include "td/telegram/ContactsManager.h"
 #include "td/telegram/Dependencies.h"
 #include "td/telegram/DialogManager.h"
 #include "td/telegram/LinkManager.h"
@@ -15,11 +14,11 @@
 #include "td/telegram/SecretChatLayer.h"
 #include "td/telegram/StickersManager.h"
 #include "td/telegram/Td.h"
+#include "td/telegram/UserManager.h"
 
 #include "td/actor/MultiPromise.h"
 
 #include "td/utils/algorithm.h"
-#include "td/utils/format.h"
 #include "td/utils/HashTableUtils.h"
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
@@ -35,6 +34,36 @@
 #include <tuple>
 
 namespace td {
+
+static Result<int32> get_date_flags(const string &date_format) {
+  if (date_format == "r" || date_format == "R") {
+    return MessageEntity::DateFlags::Relative;
+  }
+  int32 date_flags = 0;
+  for (auto c : date_format) {
+    switch (c) {
+      case 't':
+        date_flags |= MessageEntity::DateFlags::ShortTime;
+        break;
+      case 'T':
+        date_flags |= MessageEntity::DateFlags::LongTime;
+        break;
+      case 'd':
+        date_flags |= MessageEntity::DateFlags::ShortDate;
+        break;
+      case 'D':
+        date_flags |= MessageEntity::DateFlags::LongDate;
+        break;
+      case 'w':
+      case 'W':
+        date_flags |= MessageEntity::DateFlags::DayOfWeek;
+        break;
+      default:
+        return Status::Error(400, "Invalid date format used");
+    }
+  }
+  return std::move(date_flags);
+}
 
 int MessageEntity::get_type_priority(Type type) {
   static const int priorities[] = {50 /*Mention*/,
@@ -57,7 +86,9 @@ int MessageEntity::get_type_priority(Type type) {
                                    50 /*BankCardNumber*/,
                                    50 /*MediaTimestamp*/,
                                    94 /*Spoiler*/,
-                                   99 /*CustomEmoji*/};
+                                   99 /*CustomEmoji*/,
+                                   0 /*ExpandableBlockQuote*/,
+                                   30 /*FormattedDate*/};
   static_assert(sizeof(priorities) / sizeof(priorities[0]) == static_cast<size_t>(MessageEntity::Type::Size), "");
   return priorities[static_cast<int32>(type)];
 }
@@ -106,6 +137,10 @@ StringBuilder &operator<<(StringBuilder &string_builder, const MessageEntity::Ty
       return string_builder << "Spoiler";
     case MessageEntity::Type::CustomEmoji:
       return string_builder << "CustomEmoji";
+    case MessageEntity::Type::ExpandableBlockQuote:
+      return string_builder << "ExpandableBlockQuote";
+    case MessageEntity::Type::FormattedDate:
+      return string_builder << "Date";
     default:
       UNREACHABLE();
       return string_builder << "Impossible";
@@ -127,11 +162,15 @@ StringBuilder &operator<<(StringBuilder &string_builder, const MessageEntity &me
   if (message_entity.custom_emoji_id.is_valid()) {
     string_builder << ", " << message_entity.custom_emoji_id;
   }
+  if (message_entity.date != 0) {
+    string_builder << ", at " << message_entity.date << " with flags " << message_entity.date_flags;
+  }
   string_builder << ']';
   return string_builder;
 }
 
-tl_object_ptr<td_api::TextEntityType> MessageEntity::get_text_entity_type_object() const {
+tl_object_ptr<td_api::TextEntityType> MessageEntity::get_text_entity_type_object(
+    const UserManager *user_manager) const {
   switch (type) {
     case MessageEntity::Type::Mention:
       return make_tl_object<td_api::textEntityTypeMention>();
@@ -162,8 +201,9 @@ tl_object_ptr<td_api::TextEntityType> MessageEntity::get_text_entity_type_object
     case MessageEntity::Type::TextUrl:
       return make_tl_object<td_api::textEntityTypeTextUrl>(argument);
     case MessageEntity::Type::MentionName:
-      // can't use contacts_manager, because can be called from a static request
-      return make_tl_object<td_api::textEntityTypeMentionName>(user_id.get());
+      return make_tl_object<td_api::textEntityTypeMentionName>(
+          user_manager == nullptr ? user_id.get()
+                                  : user_manager->get_user_id_object(user_id, "textEntityTypeMentionName"));
     case MessageEntity::Type::Cashtag:
       return make_tl_object<td_api::textEntityTypeCashtag>();
     case MessageEntity::Type::PhoneNumber:
@@ -176,17 +216,48 @@ tl_object_ptr<td_api::TextEntityType> MessageEntity::get_text_entity_type_object
       return make_tl_object<td_api::textEntityTypeSpoiler>();
     case MessageEntity::Type::CustomEmoji:
       return make_tl_object<td_api::textEntityTypeCustomEmoji>(custom_emoji_id.get());
+    case MessageEntity::Type::ExpandableBlockQuote:
+      return make_tl_object<td_api::textEntityTypeExpandableBlockQuote>();
+    case MessageEntity::Type::FormattedDate: {
+      td_api::object_ptr<td_api::DateTimeFormattingType> formatting_type;
+      if ((date_flags & DateFlags::Relative) != 0) {
+        formatting_type = td_api::make_object<td_api::dateTimeFormattingTypeRelative>();
+      } else if (date_flags != 0) {
+        td_api::object_ptr<td_api::DateTimePartPrecision> time_precision;
+        if ((date_flags & DateFlags::ShortTime) != 0) {
+          time_precision = td_api::make_object<td_api::dateTimePartPrecisionShort>();
+        } else if ((date_flags & DateFlags::LongTime) != 0) {
+          time_precision = td_api::make_object<td_api::dateTimePartPrecisionLong>();
+        } else {
+          time_precision = td_api::make_object<td_api::dateTimePartPrecisionNone>();
+        }
+
+        td_api::object_ptr<td_api::DateTimePartPrecision> date_precision;
+        if ((date_flags & DateFlags::ShortDate) != 0) {
+          date_precision = td_api::make_object<td_api::dateTimePartPrecisionShort>();
+        } else if ((date_flags & DateFlags::LongDate) != 0) {
+          date_precision = td_api::make_object<td_api::dateTimePartPrecisionLong>();
+        } else {
+          date_precision = td_api::make_object<td_api::dateTimePartPrecisionNone>();
+        }
+        auto show_day_of_week = (date_flags & DateFlags::DayOfWeek) != 0;
+        formatting_type = td_api::make_object<td_api::dateTimeFormattingTypeAbsolute>(
+            std::move(time_precision), std::move(date_precision), show_day_of_week);
+      }
+      return make_tl_object<td_api::textEntityTypeDateTime>(date, std::move(formatting_type));
+    }
     default:
       UNREACHABLE();
       return nullptr;
   }
 }
 
-tl_object_ptr<td_api::textEntity> MessageEntity::get_text_entity_object() const {
-  return make_tl_object<td_api::textEntity>(offset, length, get_text_entity_type_object());
+tl_object_ptr<td_api::textEntity> MessageEntity::get_text_entity_object(const UserManager *user_manager) const {
+  return make_tl_object<td_api::textEntity>(offset, length, get_text_entity_type_object(user_manager));
 }
 
-vector<tl_object_ptr<td_api::textEntity>> get_text_entities_object(const vector<MessageEntity> &entities,
+vector<tl_object_ptr<td_api::textEntity>> get_text_entities_object(const UserManager *user_manager,
+                                                                   const vector<MessageEntity> &entities,
                                                                    bool skip_bot_commands, int32 max_media_timestamp) {
   vector<tl_object_ptr<td_api::textEntity>> result;
   result.reserve(entities.size());
@@ -198,7 +269,7 @@ vector<tl_object_ptr<td_api::textEntity>> get_text_entities_object(const vector<
     if (entity.type == MessageEntity::Type::MediaTimestamp && max_media_timestamp < entity.media_timestamp) {
       continue;
     }
-    auto entity_object = entity.get_text_entity_object();
+    auto entity_object = entity.get_text_entity_object(user_manager);
     if (entity_object->type_ != nullptr) {
       result.push_back(std::move(entity_object));
     }
@@ -211,10 +282,11 @@ StringBuilder &operator<<(StringBuilder &string_builder, const FormattedText &te
   return string_builder << '"' << text.text << "\" with entities " << text.entities;
 }
 
-td_api::object_ptr<td_api::formattedText> get_formatted_text_object(const FormattedText &text, bool skip_bot_commands,
+td_api::object_ptr<td_api::formattedText> get_formatted_text_object(const UserManager *user_manager,
+                                                                    const FormattedText &text, bool skip_bot_commands,
                                                                     int32 max_media_timestamp) {
   return td_api::make_object<td_api::formattedText>(
-      text.text, get_text_entities_object(text.entities, skip_bot_commands, max_media_timestamp));
+      text.text, get_text_entities_object(user_manager, text.entities, skip_bot_commands, max_media_timestamp));
 }
 
 static bool is_word_character(uint32 code) {
@@ -371,7 +443,7 @@ static vector<Slice> match_hashtags(Slice str) {
   const unsigned char *end = str.uend();
   const unsigned char *ptr = begin;
 
-  // '/(?<=^|[^\d_\pL\x{200c}\x{0d80}-\x{0dff}])#([\d_\pL\x{200c}\x{0d80}-\x{0dff}]{1,256})(?![\d_\pL\x{200c}\x{0d80}-\x{0dff}]*#)/u'
+  // '/(?<=^|[^is_hashtag_letter])#([is_hashtag_letter]{1,256})(?:@([a-zA-Z0-9_]{3,32}))?(?![is_hashtag_letter]*#)/u'
   // and at least one letter
 
   UnicodeSimpleCategory category;
@@ -417,6 +489,17 @@ static vector<Slice> match_hashtags(Slice str) {
     if (hashtag_size < 1) {
       continue;
     }
+    if (hashtag_end == ptr && ptr != end && ptr[0] == '@') {
+      auto username_end = ptr + 1;
+      while (username_end != end && username_end - ptr < 33 && is_alpha_digit_or_underscore(*username_end)) {
+        username_end++;
+      }
+      auto length = username_end - ptr - 1;
+      if (length >= 3) {
+        ptr = username_end;
+        hashtag_end = username_end;
+      }
+    }
     if (ptr != end && ptr[0] == '#') {
       continue;
     }
@@ -434,7 +517,7 @@ static vector<Slice> match_cashtags(Slice str) {
   const unsigned char *end = str.uend();
   const unsigned char *ptr = begin;
 
-  // '/(?<=^|[^$\d_\pL\x{200c}\x{0d80}-\x{0dff}])\$(1INCH|[A-Z]{1,8})(?![$\d_\pL\x{200c}\x{0d80}-\x{0dff}])/u'
+  // '/(?<=^|[^$is_hashtag_letter])\$(1INCH|[A-Z]{1,8})(?:@([a-zA-Z0-9_]{3,32}))?(?![$is_hashtag_letter])/u'
 
   UnicodeSimpleCategory category;
   while (true) {
@@ -466,7 +549,17 @@ static vector<Slice> match_cashtags(Slice str) {
     if (cashtag_size < 1 || cashtag_size > 8) {
       continue;
     }
-
+    if (ptr != end && ptr[0] == '@') {
+      auto username_end = ptr + 1;
+      while (username_end != end && is_alpha_digit_or_underscore(*username_end)) {
+        username_end++;
+      }
+      auto length = username_end - ptr - 1;
+      if (length >= 3 && length <= 32) {
+        cashtag_end = username_end;
+        ptr = username_end;
+      }
+    }
     if (cashtag_end != end) {
       uint32 code;
       next_utf8_unsafe(ptr, &code);
@@ -623,7 +716,7 @@ static vector<Slice> match_tg_urls(Slice str) {
   const unsigned char *end = str.uend();
   const unsigned char *ptr = begin;
 
-  // '(tg|ton)://[a-z0-9_-]{1,253}([/?#][^\s\x{2000}-\x{200b}\x{200e}-\x{200f}\x{2016}-\x{206f}<>«»"]*)?'
+  // '(tg|ton|tonsite)://[a-z0-9_-]{1,253}([/?#][^\s\x{2000}-\x{200b}\x{200e}-\x{200f}\x{2016}-\x{206f}<>«»"]*)?'
 
   Slice bad_path_end_chars(".:;,('?!`");
 
@@ -638,6 +731,10 @@ static vector<Slice> match_tg_urls(Slice str) {
       if (ptr - begin >= 2 && to_lower(ptr[-2]) == 't' && to_lower(ptr[-1]) == 'g') {
         url_begin = ptr - 2;
       } else if (ptr - begin >= 3 && to_lower(ptr[-3]) == 't' && to_lower(ptr[-2]) == 'o' && to_lower(ptr[-1]) == 'n') {
+        url_begin = ptr - 3;
+      } else if (ptr - begin >= 7 && to_lower(ptr[-7]) == 't' && to_lower(ptr[-6]) == 'o' && to_lower(ptr[-5]) == 'n' &&
+                 to_lower(ptr[-4]) == 's' && to_lower(ptr[-3]) == 'i' && to_lower(ptr[-2]) == 't' &&
+                 to_lower(ptr[-1]) == 'e') {
         url_begin = ptr - 3;
       }
     }
@@ -858,6 +955,8 @@ static vector<Slice> match_urls(Slice str) {
           url_begin_ptr = url_begin_ptr - 8;
         } else if (ends_with(protocol, "ftp") && protocol != "tftp" && protocol != "sftp") {
           url_begin_ptr = url_begin_ptr - 6;
+        } else if (ends_with(protocol, "tonsite")) {
+          url_begin_ptr = url_begin_ptr - 10;
         } else {
           is_bad = true;
         }
@@ -1023,118 +1122,116 @@ static bool is_common_tld(Slice str) {
        "americanfamily", "amex", "amfam", "amica", "amsterdam", "analytics", "android", "anquan", "anz", "ao", "aol",
        "apartments", "app", "apple", "aq", "aquarelle", "ar", "arab", "aramco", "archi", "army", "arpa", "art", "arte",
        "as", "asda", "asia", "associates", "at", "athleta", "attorney", "au", "auction", "audi", "audible", "audio",
-       "auspost", "author", "auto", "autos", "avianca", "aw", "aws", "ax", "axa", "az", "azure", "ba", "baby", "baidu",
-       "banamex", "bananarepublic", "band", "bank", "bar", "barcelona", "barclaycard", "barclays", "barefoot",
-       "bargains", "baseball", "basketball", "bauhaus", "bayern", "bb", "bbc", "bbt", "bbva", "bcg", "bcn", "bd", "be",
-       "beats", "beauty", "beer", "bentley", "berlin", "best", "bestbuy", "bet", "bf", "bg", "bh", "bharti", "bi",
-       "bible", "bid", "bike", "bing", "bingo", "bio", "biz", "bj", "black", "blackfriday", "blockbuster", "blog",
-       "bloomberg", "blue", "bm", "bms", "bmw", "bn", "bnpparibas", "bo", "boats", "boehringer", "bofa", "bom", "bond",
-       "boo", "book", "booking", "bosch", "bostik", "boston", "bot", "boutique", "box", "br", "bradesco", "bridgestone",
-       "broadway", "broker", "brother", "brussels", "bs", "bt", "build", "builders", "business", "buy", "buzz", "bv",
-       "bw", "by", "bz", "bzh", "ca", "cab", "cafe", "cal", "call", "calvinklein", "cam", "camera", "camp", "canon",
-       "capetown", "capital", "capitalone", "car", "caravan", "cards", "care", "career", "careers", "cars", "casa",
-       "case", "cash", "casino", "cat", "catering", "catholic", "cba", "cbn", "cbre", "cbs", "cc", "cd", "center",
-       "ceo", "cern", "cf", "cfa", "cfd", "cg", "ch", "chanel", "channel", "charity", "chase", "chat", "cheap",
-       "chintai", "christmas", "chrome", "church", "ci", "cipriani", "circle", "cisco", "citadel", "citi", "citic",
-       "city", "cityeats", "ck", "cl", "claims", "cleaning", "click", "clinic", "clinique", "clothing", "cloud", "club",
-       "clubmed", "cm", "cn", "co", "coach", "codes", "coffee", "college", "cologne", "com", "comcast", "commbank",
-       "community", "company", "compare", "computer", "comsec", "condos", "construction", "consulting", "contact",
-       "contractors", "cooking", "cool", "coop", "corsica", "country", "coupon", "coupons", "courses", "cpa", "cr",
-       "credit", "creditcard", "creditunion", "cricket", "crown", "crs", "cruise", "cruises", "cu", "cuisinella", "cv",
-       "cw", "cx", "cy", "cymru", "cyou", "cz", "dabur", "dad", "dance", "data", "date", "dating", "datsun", "day",
-       "dclk", "dds", "de", "deal", "dealer", "deals", "degree", "delivery", "dell", "deloitte", "delta", "democrat",
-       "dental", "dentist", "desi", "design", "dev", "dhl", "diamonds", "diet", "digital", "direct", "directory",
-       "discount", "discover", "dish", "diy", "dj", "dk", "dm", "dnp", "do", "docs", "doctor", "dog", "domains", "dot",
-       "download", "drive", "dtv", "dubai", "dunlop", "dupont", "durban", "dvag", "dvr", "dz", "earth", "eat", "ec",
-       "eco", "edeka", "edu", "education", "ee", "eg", "email", "emerck", "energy", "engineer", "engineering",
-       "enterprises", "epson", "equipment", "er", "ericsson", "erni", "es", "esq", "estate", "et", "etisalat", "eu",
-       "eurovision", "eus", "events", "exchange", "expert", "exposed", "express", "extraspace", "fage", "fail",
-       "fairwinds", "faith", "family", "fan", "fans", "farm", "farmers", "fashion", "fast", "fedex", "feedback",
+       "auspost", "author", "auto", "autos", "aw", "aws", "ax", "axa", "az", "azure", "ba", "baby", "baidu", "banamex",
+       "band", "bank", "bar", "barcelona", "barclaycard", "barclays", "barefoot", "bargains", "baseball", "basketball",
+       "bauhaus", "bayern", "bb", "bbc", "bbt", "bbva", "bcg", "bcn", "bd", "be", "beats", "beauty", "beer", "bentley",
+       "berlin", "best", "bestbuy", "bet", "bf", "bg", "bh", "bharti", "bi", "bible", "bid", "bike", "bing", "bingo",
+       "bio", "biz", "bj", "black", "blackfriday", "blockbuster", "blog", "bloomberg", "blue", "bm", "bms", "bmw", "bn",
+       "bnpparibas", "bo", "boats", "boehringer", "bofa", "bom", "bond", "boo", "book", "booking", "bosch", "bostik",
+       "boston", "bot", "boutique", "box", "br", "bradesco", "bridgestone", "broadway", "broker", "brother", "brussels",
+       "bs", "bt", "build", "builders", "business", "buy", "buzz", "bv", "bw", "by", "bz", "bzh", "ca", "cab", "cafe",
+       "cal", "call", "calvinklein", "cam", "camera", "camp", "canon", "capetown", "capital", "capitalone", "car",
+       "caravan", "cards", "care", "career", "careers", "cars", "casa", "case", "cash", "casino", "cat", "catering",
+       "catholic", "cba", "cbn", "cbre", "cc", "cd", "center", "ceo", "cern", "cf", "cfa", "cfd", "cg", "ch", "chanel",
+       "channel", "charity", "chase", "chat", "cheap", "chintai", "christmas", "chrome", "church", "ci", "cipriani",
+       "circle", "cisco", "citadel", "citi", "citic", "city", "ck", "cl", "claims", "cleaning", "click", "clinic",
+       "clinique", "clothing", "cloud", "club", "clubmed", "cm", "cn", "co", "coach", "codes", "coffee", "college",
+       "cologne", "com", "commbank", "community", "company", "compare", "computer", "comsec", "condos", "construction",
+       "consulting", "contact", "contractors", "cooking", "cool", "coop", "corsica", "country", "coupon", "coupons",
+       "courses", "cpa", "cr", "credit", "creditcard", "creditunion", "cricket", "crown", "crs", "cruise", "cruises",
+       "cu", "cuisinella", "cv", "cw", "cx", "cy", "cymru", "cyou", "cz", "dabur", "dad", "dance", "data", "date",
+       "dating", "datsun", "day", "dclk", "dds", "de", "deal", "dealer", "deals", "degree", "delivery", "dell",
+       "deloitte", "delta", "democrat", "dental", "dentist", "desi", "design", "dev", "dhl", "diamonds", "diet",
+       "digital", "direct", "directory", "discount", "discover", "dish", "diy", "dj", "dk", "dm", "dnp", "do", "docs",
+       "doctor", "dog", "domains", "dot", "download", "drive", "dtv", "dubai", "dunlop", "dupont", "durban", "dvag",
+       "dvr", "dz", "earth", "eat", "ec", "eco", "edeka", "edu", "education", "ee", "eg", "email", "emerck", "energy",
+       "engineer", "engineering", "enterprises", "epson", "equipment", "er", "ericsson", "erni", "es", "esq", "estate",
+       "et", "eu", "eurovision", "eus", "events", "exchange", "expert", "exposed", "express", "extraspace", "fage",
+       "fail", "fairwinds", "faith", "family", "fan", "fans", "farm", "farmers", "fashion", "fast", "fedex", "feedback",
        "ferrari", "ferrero", "fi", "fidelity", "fido", "film", "final", "finance", "financial", "fire", "firestone",
        "firmdale", "fish", "fishing", "fit", "fitness", "fj", "fk", "flickr", "flights", "flir", "florist", "flowers",
        "fly", "fm", "fo", "foo", "food", "football", "ford", "forex", "forsale", "forum", "foundation", "fox", "fr",
-       "free", "fresenius", "frl", "frogans", "frontdoor", "frontier", "ftr", "fujitsu", "fun", "fund", "furniture",
-       "futbol", "fyi", "ga", "gal", "gallery", "gallo", "gallup", "game", "games", "gap", "garden", "gay", "gb",
-       "gbiz", "gd", "gdn", "ge", "gea", "gent", "genting", "george", "gf", "gg", "ggee", "gh", "gi", "gift", "gifts",
-       "gives", "giving", "gl", "glass", "gle", "global", "globo", "gm", "gmail", "gmbh", "gmo", "gmx", "gn", "godaddy",
-       "gold", "goldpoint", "golf", "goo", "goodyear", "goog", "google", "gop", "got", "gov", "gp", "gq", "gr",
-       "grainger", "graphics", "gratis", "green", "gripe", "grocery", "group", "gs", "gt", "gu", "guardian", "gucci",
-       "guge", "guide", "guitars", "guru", "gw", "gy", "hair", "hamburg", "hangout", "haus", "hbo", "hdfc", "hdfcbank",
-       "health", "healthcare", "help", "helsinki", "here", "hermes", "hiphop", "hisamitsu", "hitachi", "hiv", "hk",
-       "hkt", "hm", "hn", "hockey", "holdings", "holiday", "homedepot", "homegoods", "homes", "homesense", "honda",
-       "horse", "hospital", "host", "hosting", "hot", "hotels", "hotmail", "house", "how", "hr", "hsbc", "ht", "hu",
-       "hughes", "hyatt", "hyundai", "ibm", "icbc", "ice", "icu", "id", "ie", "ieee", "ifm", "ikano", "il", "im",
-       "imamat", "imdb", "immo", "immobilien", "in", "inc", "industries", "infiniti", "info", "ing", "ink", "institute",
+       "free", "fresenius", "frl", "frogans", "frontier", "ftr", "fujitsu", "fun", "fund", "furniture", "futbol", "fyi",
+       "ga", "gal", "gallery", "gallo", "gallup", "game", "games", "gap", "garden", "gay", "gb", "gbiz", "gd", "gdn",
+       "ge", "gea", "gent", "genting", "george", "gf", "gg", "ggee", "gh", "gi", "gift", "gifts", "gives", "giving",
+       "gl", "glass", "gle", "global", "globo", "gm", "gmail", "gmbh", "gmo", "gmx", "gn", "godaddy", "gold",
+       "goldpoint", "golf", "goo", "goodyear", "goog", "google", "gop", "got", "gov", "gp", "gq", "gr", "grainger",
+       "graphics", "gratis", "green", "gripe", "grocery", "group", "gs", "gt", "gu", "gucci", "guge", "guide",
+       "guitars", "guru", "gw", "gy", "hair", "hamburg", "hangout", "haus", "hbo", "hdfc", "hdfcbank", "health",
+       "healthcare", "help", "helsinki", "here", "hermes", "hiphop", "hisamitsu", "hitachi", "hiv", "hk", "hkt", "hm",
+       "hn", "hockey", "holdings", "holiday", "homedepot", "homegoods", "homes", "homesense", "honda", "horse",
+       "hospital", "host", "hosting", "hot", "hotels", "hotmail", "house", "how", "hr", "hsbc", "ht", "hu", "hughes",
+       "hyatt", "hyundai", "ibm", "icbc", "ice", "icu", "id", "ie", "ieee", "ifm", "ikano", "il", "im", "imamat",
+       "imdb", "immo", "immobilien", "in", "inc", "industries", "infiniti", "info", "ing", "ink", "institute",
        "insurance", "insure", "int", "international", "intuit", "investments", "io", "ipiranga", "iq", "ir", "irish",
        "is", "ismaili", "ist", "istanbul", "it", "itau", "itv", "jaguar", "java", "jcb", "je", "jeep", "jetzt",
        "jewelry", "jio", "jll", "jm", "jmp", "jnj", "jo", "jobs", "joburg", "jot", "joy", "jp", "jpmorgan", "jprs",
        "juegos", "juniper", "kaufen", "kddi", "ke", "kerryhotels", "kerrylogistics", "kerryproperties", "kfh", "kg",
-       "kh", "ki", "kia", "kids", "kim", "kinder", "kindle", "kitchen", "kiwi", "km", "kn", "koeln", "komatsu",
-       "kosher", "kp", "kpmg", "kpn", "kr", "krd", "kred", "kuokgroup", "kw", "ky", "kyoto", "kz", "la", "lacaixa",
-       "lamborghini", "lamer", "lancaster", "land", "landrover", "lanxess", "lasalle", "lat", "latino", "latrobe",
-       "law", "lawyer", "lb", "lc", "lds", "lease", "leclerc", "lefrak", "legal", "lego", "lexus", "lgbt", "li", "lidl",
-       "life", "lifeinsurance", "lifestyle", "lighting", "like", "lilly", "limited", "limo", "lincoln", "link", "lipsy",
-       "live", "living", "lk", "llc", "llp", "loan", "loans", "locker", "locus", "lol", "london", "lotte", "lotto",
-       "love", "lpl", "lplfinancial", "lr", "ls", "lt", "ltd", "ltda", "lu", "lundbeck", "luxe", "luxury", "lv", "ly",
-       "ma", "madrid", "maif", "maison", "makeup", "man", "management", "mango", "map", "market", "marketing",
-       "markets", "marriott", "marshalls", "mattel", "mba", "mc", "mckinsey", "md", "me", "med", "media", "meet",
-       "melbourne", "meme", "memorial", "men", "menu", "merckmsd", "mg", "mh", "miami", "microsoft", "mil", "mini",
-       "mint", "mit", "mitsubishi", "mk", "ml", "mlb", "mls", "mm", "mma", "mn", "mo", "mobi", "mobile", "moda", "moe",
-       "moi", "mom", "monash", "money", "monster", "mormon", "mortgage", "moscow", "moto", "motorcycles", "mov",
-       "movie", "mp", "mq", "mr", "ms", "msd", "mt", "mtn", "mtr", "mu", "museum", "music", "mv", "mw", "mx", "my",
-       "mz", "na", "nab", "nagoya", "name", "natura", "navy", "nba", "nc", "ne", "nec", "net", "netbank", "netflix",
-       "network", "neustar", "new", "news", "next", "nextdirect", "nexus", "nf", "nfl", "ng", "ngo", "nhk", "ni",
-       "nico", "nike", "nikon", "ninja", "nissan", "nissay", "nl", "no", "nokia", "norton", "now", "nowruz", "nowtv",
-       "np", "nr", "nra", "nrw", "ntt", "nu", "nyc", "nz", "obi", "observer", "office", "okinawa", "olayan",
-       "olayangroup", "oldnavy", "ollo", "om", "omega", "one", "ong", "onl", "online", "ooo", "open", "oracle",
-       "orange", "org", "organic", "origins", "osaka", "otsuka", "ott", "ovh", "pa", "page", "panasonic", "paris",
-       "pars", "partners", "parts", "party", "pay", "pccw", "pe", "pet", "pf", "pfizer", "pg", "ph", "pharmacy", "phd",
-       "philips", "phone", "photo", "photography", "photos", "physio", "pics", "pictet", "pictures", "pid", "pin",
-       "ping", "pink", "pioneer", "pizza", "pk", "pl", "place", "play", "playstation", "plumbing", "plus", "pm", "pn",
-       "pnc", "pohl", "poker", "politie", "porn", "post", "pr", "pramerica", "praxi", "press", "prime", "pro", "prod",
-       "productions", "prof", "progressive", "promo", "properties", "property", "protection", "pru", "prudential", "ps",
-       "pt", "pub", "pw", "pwc", "py", "qa", "qpon", "quebec", "quest", "racing", "radio", "re", "read", "realestate",
-       "realtor", "realty", "recipes", "red", "redstone", "redumbrella", "rehab", "reise", "reisen", "reit", "reliance",
-       "ren", "rent", "rentals", "repair", "report", "republican", "rest", "restaurant", "review", "reviews", "rexroth",
-       "rich", "richardli", "ricoh", "ril", "rio", "rip", "ro", "rocher", "rocks", "rodeo", "rogers", "room", "rs",
-       "rsvp", "ru", "rugby", "ruhr", "run", "rw", "rwe", "ryukyu", "sa", "saarland", "safe", "safety", "sakura",
-       "sale", "salon", "samsclub", "samsung", "sandvik", "sandvikcoromant", "sanofi", "sap", "sarl", "sas", "save",
-       "saxo", "sb", "sbi", "sbs", "sc", "sca", "scb", "schaeffler", "schmidt", "scholarships", "school", "schule",
-       "schwarz", "science", "scot", "sd", "se", "search", "seat", "secure", "security", "seek", "select", "sener",
-       "services", "seven", "sew", "sex", "sexy", "sfr", "sg", "sh", "shangrila", "sharp", "shaw", "shell", "shia",
-       "shiksha", "shoes", "shop", "shopping", "shouji", "show", "showtime", "si", "silk", "sina", "singles", "site",
-       "sj", "sk", "ski", "skin", "sky", "skype", "sl", "sling", "sm", "smart", "smile", "sn", "sncf", "so", "soccer",
-       "social", "softbank", "software", "sohu", "solar", "solutions", "song", "sony", "soy", "spa", "space", "sport",
-       "spot", "sr", "srl", "ss", "st", "stada", "staples", "star", "statebank", "statefarm", "stc", "stcgroup",
-       "stockholm", "storage", "store", "stream", "studio", "study", "style", "su", "sucks", "supplies", "supply",
-       "support", "surf", "surgery", "suzuki", "sv", "swatch", "swiss", "sx", "sy", "sydney", "systems", "sz", "tab",
-       "taipei", "talk", "taobao", "target", "tatamotors", "tatar", "tattoo", "tax", "taxi", "tc", "tci", "td", "tdk",
-       "team", "tech", "technology", "tel", "temasek", "tennis", "teva", "tf", "tg", "th", "thd", "theater", "theatre",
-       "tiaa", "tickets", "tienda", "tips", "tires", "tirol", "tj", "tjmaxx", "tjx", "tk", "tkmaxx", "tl", "tm",
-       "tmall", "tn", "to", "today", "tokyo", "tools", "top", "toray", "toshiba", "total", "tours", "town", "toyota",
-       "toys", "tr", "trade", "trading", "training", "travel", "travelers", "travelersinsurance", "trust", "trv", "tt",
-       "tube", "tui", "tunes", "tushu", "tv", "tvs", "tw", "tz", "ua", "ubank", "ubs", "ug", "uk", "unicom",
-       "university", "uno", "uol", "ups", "us", "uy", "uz", "va", "vacations", "vana", "vanguard", "vc", "ve", "vegas",
-       "ventures", "verisign", "versicherung", "vet", "vg", "vi", "viajes", "video", "vig", "viking", "villas", "vin",
-       "vip", "virgin", "visa", "vision", "viva", "vivo", "vlaanderen", "vn", "vodka", "volkswagen", "volvo", "vote",
-       "voting", "voto", "voyage", "vu", "wales", "walmart", "walter", "wang", "wanggou", "watch", "watches", "weather",
-       "weatherchannel", "webcam", "weber", "website", "wed", "wedding", "weibo", "weir", "wf", "whoswho", "wien",
-       "wiki", "williamhill", "win", "windows", "wine", "winners", "wme", "wolterskluwer", "woodside", "work", "works",
-       "world", "wow", "ws", "wtc", "wtf", "xbox", "xerox", "xfinity", "xihuan", "xin", "कॉम", "セール", "佛山", "ಭಾರತ",
-       "慈善", "集团", "在线", "한국", "ଭାରତ", "点看", "คอม", "ভাৰত", "ভারত", "八卦", "ישראל", "موقع", "বাংলা", "公益",
-       "公司", "香格里拉", "网站", "移动", "我爱你", "москва", "қаз", "католик", "онлайн", "сайт", "联通", "срб", "бг",
-       "бел", "קום", "时尚", "微博", "淡马锡", "ファッション", "орг", "नेट", "ストア", "アマゾン", "삼성", "சிங்கப்பூர்",
-       "商标", "商店", "商城", "дети", "мкд", "ею", "ポイント", "新闻", "家電", "كوم", "中文网", "中信", "中国", "中國",
-       "娱乐", "谷歌", "భారత్", "ලංකා", "電訊盈科", "购物", "クラウド", "ભારત", "通販", "भारतम्", "भारत", "भारोत", "网店",
-       "संगठन", "餐厅", "网络", "ком", "укр", "香港", "亚马逊", "食品", "飞利浦", "台湾", "台灣", "手机", "мон",
-       "الجزائر", "عمان", "ارامكو", "ایران", "العليان", "اتصالات", "امارات", "بازار", "موريتانيا", "پاکستان", "الاردن",
-       "بارت", "بھارت", "المغرب", "ابوظبي", "البحرين", "السعودية", "ڀارت", "كاثوليك", "سودان", "همراه", "عراق",
-       "مليسيا", "澳門", "닷컴", "政府", "شبكة", "بيتك", "عرب", "გე", "机构", "组织机构", "健康", "ไทย", "سورية",
-       "招聘", "рус", "рф", "تونس", "大拿", "ລາວ", "みんな", "グーグル", "ευ", "ελ", "世界", "書籍", "ഭാരതം", "ਭਾਰਤ",
-       "网址", "닷넷", "コム", "天主教", "游戏", "vermögensberater", "vermögensberatung", "企业", "信息", "嘉里大酒店",
-       "嘉里", "مصر", "قطر", "广东", "இலங்கை", "இந்தியா", "հայ", "新加坡", "فلسطين", "政务", "xxx", "xyz", "yachts",
-       "yahoo", "yamaxun", "yandex", "ye", "yodobashi", "yoga", "yokohama", "you", "youtube", "yt", "yun", "za",
-       "zappos", "zara", "zero", "zip", "zm", "zone", "zuerich",
+       "kh", "ki", "kia", "kids", "kim", "kindle", "kitchen", "kiwi", "km", "kn", "koeln", "komatsu", "kosher", "kp",
+       "kpmg", "kpn", "kr", "krd", "kred", "kuokgroup", "kw", "ky", "kyoto", "kz", "la", "lacaixa", "lamborghini",
+       "lamer", "lancaster", "land", "landrover", "lanxess", "lasalle", "lat", "latino", "latrobe", "law", "lawyer",
+       "lb", "lc", "lds", "lease", "leclerc", "lefrak", "legal", "lego", "lexus", "lgbt", "li", "lidl", "life",
+       "lifeinsurance", "lifestyle", "lighting", "like", "lilly", "limited", "limo", "lincoln", "link", "lipsy", "live",
+       "living", "lk", "llc", "llp", "loan", "loans", "locker", "locus", "lol", "london", "lotte", "lotto", "love",
+       "lpl", "lplfinancial", "lr", "ls", "lt", "ltd", "ltda", "lu", "lundbeck", "luxe", "luxury", "lv", "ly", "ma",
+       "madrid", "maif", "maison", "makeup", "man", "management", "mango", "map", "market", "marketing", "markets",
+       "marriott", "marshalls", "mattel", "mba", "mc", "mckinsey", "md", "me", "med", "media", "meet", "melbourne",
+       "meme", "memorial", "men", "menu", "merckmsd", "mg", "mh", "miami", "microsoft", "mil", "mini", "mint", "mit",
+       "mitsubishi", "mk", "ml", "mlb", "mls", "mm", "mma", "mn", "mo", "mobi", "mobile", "moda", "moe", "moi", "mom",
+       "monash", "money", "monster", "mormon", "mortgage", "moscow", "moto", "motorcycles", "mov", "movie", "mp", "mq",
+       "mr", "ms", "msd", "mt", "mtn", "mtr", "mu", "museum", "music", "mv", "mw", "mx", "my", "mz", "na", "nab",
+       "nagoya", "name", "navy", "nba", "nc", "ne", "nec", "net", "netbank", "netflix", "network", "neustar", "new",
+       "news", "next", "nextdirect", "nexus", "nf", "nfl", "ng", "ngo", "nhk", "ni", "nico", "nike", "nikon", "ninja",
+       "nissan", "nissay", "nl", "no", "nokia", "norton", "now", "nowruz", "nowtv", "np", "nr", "nra", "nrw", "ntt",
+       "nu", "nyc", "nz", "obi", "observer", "office", "okinawa", "olayan", "olayangroup", "ollo", "om", "omega", "one",
+       "ong", "onion", "onl", "online", "ooo", "open", "oracle", "orange", "org", "organic", "origins", "osaka",
+       "otsuka", "ott", "ovh", "pa", "page", "panasonic", "paris", "pars", "partners", "parts", "party", "pay", "pccw",
+       "pe", "pet", "pf", "pfizer", "pg", "ph", "pharmacy", "phd", "philips", "phone", "photo", "photography", "photos",
+       "physio", "pics", "pictet", "pictures", "pid", "pin", "ping", "pink", "pioneer", "pizza", "pk", "pl", "place",
+       "play", "playstation", "plumbing", "plus", "pm", "pn", "pnc", "pohl", "poker", "politie", "porn", "post", "pr",
+       "pramerica", "praxi", "press", "prime", "pro", "prod", "productions", "prof", "progressive", "promo",
+       "properties", "property", "protection", "pru", "prudential", "ps", "pt", "pub", "pw", "pwc", "py", "qa", "qpon",
+       "quebec", "quest", "racing", "radio", "re", "read", "realestate", "realtor", "realty", "recipes", "red",
+       "redstone", "redumbrella", "rehab", "reise", "reisen", "reit", "reliance", "ren", "rent", "rentals", "repair",
+       "report", "republican", "rest", "restaurant", "review", "reviews", "rexroth", "rich", "richardli", "ricoh",
+       "ril", "rio", "rip", "ro", "rocks", "rodeo", "rogers", "room", "rs", "rsvp", "ru", "rugby", "ruhr", "run", "rw",
+       "rwe", "ryukyu", "sa", "saarland", "safe", "safety", "sakura", "sale", "salon", "samsclub", "samsung", "sandvik",
+       "sandvikcoromant", "sanofi", "sap", "sarl", "sas", "save", "saxo", "sb", "sbi", "sbs", "sc", "scb", "schaeffler",
+       "schmidt", "scholarships", "school", "schule", "schwarz", "science", "scot", "sd", "se", "search", "seat",
+       "secure", "security", "seek", "select", "sener", "services", "seven", "sew", "sex", "sexy", "sfr", "sg", "sh",
+       "shangrila", "sharp", "shell", "shia", "shiksha", "shoes", "shop", "shopping", "shouji", "show", "si", "silk",
+       "sina", "singles", "site", "sj", "sk", "ski", "skin", "sky", "skype", "sl", "sling", "sm", "smart", "smile",
+       "sn", "sncf", "so", "soccer", "social", "softbank", "software", "sohu", "solar", "solutions", "song", "sony",
+       "soy", "spa", "space", "sport", "spot", "sr", "srl", "ss", "st", "stada", "staples", "star", "statebank",
+       "statefarm", "stc", "stcgroup", "stockholm", "storage", "store", "stream", "studio", "study", "style", "su",
+       "sucks", "supplies", "supply", "support", "surf", "surgery", "suzuki", "sv", "swatch", "swiss", "sx", "sy",
+       "sydney", "systems", "sz", "tab", "taipei", "talk", "taobao", "target", "tatamotors", "tatar", "tattoo", "tax",
+       "taxi", "tc", "tci", "td", "tdk", "team", "tech", "technology", "tel", "temasek", "tennis", "teva", "tf", "tg",
+       "th", "thd", "theater", "theatre", "tiaa", "tickets", "tienda", "tips", "tires", "tirol", "tj", "tjmaxx", "tjx",
+       "tk", "tkmaxx", "tl", "tm", "tmall", "tn", "to", "today", "tokyo", "ton", "tools", "top", "toray", "toshiba",
+       "total", "tours", "town", "toyota", "toys", "tr", "trade", "trading", "training", "travel", "travelers",
+       "travelersinsurance", "trust", "trv", "tt", "tube", "tui", "tunes", "tushu", "tv", "tvs", "tw", "tz", "ua",
+       "ubank", "ubs", "ug", "uk", "unicom", "university", "uno", "uol", "ups", "us", "uy", "uz", "va", "vacations",
+       "vana", "vanguard", "vc", "ve", "vegas", "ventures", "verisign", "vermögensberater", "vermögensberatung",
+       "versicherung", "vet", "vg", "vi", "viajes", "video", "vig", "viking", "villas", "vin", "vip", "virgin", "visa",
+       "vision", "viva", "vivo", "vlaanderen", "vn", "vodka", "volvo", "vote", "voting", "voto", "voyage", "vu",
+       "wales", "walmart", "walter", "wang", "wanggou", "watch", "watches", "weather", "weatherchannel", "webcam",
+       "weber", "website", "wed", "wedding", "weibo", "weir", "wf", "whoswho", "wien", "wiki", "williamhill", "win",
+       "windows", "wine", "winners", "wme", "wolterskluwer", "woodside", "work", "works", "world", "wow", "ws", "wtc",
+       "wtf", "xbox", "xerox", "xihuan", "xin", "ελ", "ευ", "бг", "бел", "дети", "ею", "католик", "ком", "мкд", "мон",
+       "москва", "онлайн", "орг", "рус", "рф", "сайт", "срб", "укр", "қаз", "հայ", "ישראל", "קום", "ابوظبي", "ارامكو",
+       "الاردن", "البحرين", "الجزائر", "السعودية", "العليان", "المغرب", "امارات", "ایران", "بارت", "بازار", "بيتك",
+       "بھارت", "تونس", "سودان", "سورية", "شبكة", "عراق", "عرب", "عمان", "فلسطين", "قطر", "كاثوليك", "كوم", "مصر",
+       "مليسيا", "موريتانيا", "موقع", "همراه", "پاکستان", "ڀارت", "कॉम", "नेट", "भारत", "भारतम्", "भारोत", "संगठन",
+       "বাংলা", "ভারত", "ভাৰত", "ਭਾਰਤ", "ભારત", "ଭାରତ", "இந்தியா", "இலங்கை", "சிங்கப்பூர்", "భారత్", "ಭಾರತ", "ഭാരതം", "ලංකා",
+       "คอม", "ไทย", "ລາວ", "გე", "みんな", "アマゾン", "クラウド", "グーグル", "コム", "ストア", "セール",
+       "ファッション", "ポイント", "世界", "中信", "中国", "中國", "中文网", "亚马逊", "企业", "佛山", "信息", "健康",
+       "八卦", "公司", "公益", "台湾", "台灣", "商城", "商店", "商标", "嘉里", "嘉里大酒店", "在线", "大拿", "天主教",
+       "娱乐", "家電", "广东", "微博", "慈善", "我爱你", "手机", "招聘", "政务", "政府", "新加坡", "新闻", "时尚",
+       "書籍", "机构", "淡马锡", "游戏", "澳門", "点看", "移动", "组织机构", "网址", "网店", "网站", "网络", "联通",
+       "谷歌", "购物", "通販", "集团", "電訊盈科", "飞利浦", "食品", "餐厅", "香格里拉", "香港", "닷넷", "닷컴", "삼성",
+       "한국", "xxx", "xyz", "yachts", "yahoo", "yamaxun", "yandex", "ye", "yodobashi", "yoga", "yokohama", "you",
+       "youtube", "yt", "yun", "za", "zappos", "zara", "zero", "zip", "zm", "zone", "zuerich",
        // comment for clang-format to prevent it from placing all strings on separate lines
        "zw"});
   bool is_lower = true;
@@ -1159,8 +1256,9 @@ static Slice fix_url(Slice str) {
   auto full_url = str;
 
   bool has_protocol = false;
-  auto str_begin = to_lower(str.substr(0, 8));
-  if (begins_with(str_begin, "http://") || begins_with(str_begin, "https://") || begins_with(str_begin, "ftp://")) {
+  auto str_begin = to_lower(str.substr(0, 10));
+  if (begins_with(str_begin, "http://") || begins_with(str_begin, "https://") || begins_with(str_begin, "ftp://") ||
+      begins_with(str_begin, "tonsite://")) {
     auto pos = str.find(':');
     str = str.substr(pos + 3);
     has_protocol = true;
@@ -1302,7 +1400,7 @@ static Slice fix_url(Slice str) {
 }
 
 const FlatHashSet<Slice, SliceHash> &get_valid_short_usernames() {
-  static const FlatHashSet<Slice, SliceHash> valid_usernames{"gif", "vid", "pic"};
+  static const FlatHashSet<Slice, SliceHash> valid_usernames{"gif", "nft", "pic", "ufc", "vid"};
   return valid_usernames;
 }
 
@@ -1410,28 +1508,12 @@ void remove_empty_entities(vector<MessageEntity> &entities) {
         return !entity.user_id.is_valid();
       case MessageEntity::Type::CustomEmoji:
         return !entity.custom_emoji_id.is_valid();
+      case MessageEntity::Type::FormattedDate:
+        return entity.date <= 0;
       default:
         return false;
     }
   });
-}
-
-static bool is_allowed_quote_entity(const MessageEntity &entity) {
-  switch (entity.type) {
-    case MessageEntity::Type::Bold:
-    case MessageEntity::Type::Italic:
-    case MessageEntity::Type::Underline:
-    case MessageEntity::Type::Strikethrough:
-    case MessageEntity::Type::Spoiler:
-    case MessageEntity::Type::CustomEmoji:
-      return true;
-    default:
-      return false;
-  }
-}
-
-void remove_unallowed_quote_entities(FormattedText &text) {
-  td::remove_if(text.entities, [](const auto &entity) { return !is_allowed_quote_entity(entity); });
 }
 
 static int32 text_length(Slice text) {
@@ -1469,7 +1551,8 @@ static constexpr int32 get_splittable_entities_mask() {
 }
 
 static constexpr int32 get_blockquote_entities_mask() {
-  return get_entity_type_mask(MessageEntity::Type::BlockQuote);
+  return get_entity_type_mask(MessageEntity::Type::BlockQuote) |
+         get_entity_type_mask(MessageEntity::Type::ExpandableBlockQuote);
 }
 
 static constexpr int32 get_continuous_entities_mask() {
@@ -1485,7 +1568,7 @@ static constexpr int32 get_continuous_entities_mask() {
 
 static constexpr int32 get_pre_entities_mask() {
   return get_entity_type_mask(MessageEntity::Type::Pre) | get_entity_type_mask(MessageEntity::Type::Code) |
-         get_entity_type_mask(MessageEntity::Type::PreCode);
+         get_entity_type_mask(MessageEntity::Type::PreCode) | get_entity_type_mask(MessageEntity::Type::FormattedDate);
 }
 
 static constexpr int32 get_user_entities_mask() {
@@ -1499,7 +1582,7 @@ static int32 is_splittable_entity(MessageEntity::Type type) {
 }
 
 static int32 is_blockquote_entity(MessageEntity::Type type) {
-  return type == MessageEntity::Type::BlockQuote;
+  return (get_entity_type_mask(type) & get_blockquote_entities_mask()) != 0;
 }
 
 static int32 is_continuous_entity(MessageEntity::Type type) {
@@ -1571,6 +1654,10 @@ static bool are_entities_valid(const vector<MessageEntity> &entities) {
         // continuous and blockquote can't be part of other continuous entity
         return false;
       }
+      if (is_blockquote_entity(entity.type) && (nested_entity_type_mask & get_blockquote_entities_mask()) != 0) {
+        // blockquote entities can't be nested
+        return false;
+      }
       if ((nested_entity_type_mask & get_splittable_entities_mask()) != 0) {
         // the previous nested entity may be needed to split for consistency
         // alternatively, better entity merging needs to be implemented
@@ -1624,7 +1711,7 @@ static void remove_entities_intersecting_blockquote(vector<MessageEntity> &entit
   size_t left_entities = 0;
   for (size_t i = 0; i < entities.size(); i++) {
     while (blockquote_it != blockquote_entities.end() &&
-           (blockquote_it->type != MessageEntity::Type::BlockQuote ||
+           (!is_blockquote_entity(blockquote_it->type) ||
             blockquote_it->offset + blockquote_it->length <= entities[i].offset)) {
       ++blockquote_it;
     }
@@ -1685,6 +1772,25 @@ static void fix_entity_offsets(Slice text, vector<MessageEntity> &entities) {
       }
     }
     CHECK(cnt == 0);
+  }
+}
+
+bool is_found_entity_type(MessageEntity::Type type, bool skip_bot_commands, bool skip_media_timestamps) {
+  switch (type) {
+    case MessageEntity::Type::Mention:
+    case MessageEntity::Type::Hashtag:
+    case MessageEntity::Type::Cashtag:
+    case MessageEntity::Type::PhoneNumber:
+    case MessageEntity::Type::BankCardNumber:
+    case MessageEntity::Type::Url:
+    case MessageEntity::Type::EmailAddress:
+      return true;
+    case MessageEntity::Type::BotCommand:
+      return !skip_bot_commands;
+    case MessageEntity::Type::MediaTimestamp:
+      return !skip_media_timestamps;
+    default:
+      return false;
   }
 }
 
@@ -1794,8 +1900,9 @@ Slice get_first_url(const FormattedText &text) {
           continue;
         }
         auto url = utf8_utf16_substr(text.text, entity.offset, entity.length);
-        string scheme = to_lower(url.substr(0, 4));
-        if (scheme == "ton:" || begins_with(scheme, "tg:") || scheme == "ftp:" || is_plain_domain(url)) {
+        string scheme = to_lower(url.substr(0, 8));
+        if (scheme == "ton:" || begins_with(scheme, "tg:") || scheme == "ftp:" || scheme == "tonsite:" ||
+            is_plain_domain(url)) {
           continue;
         }
         return url;
@@ -1820,8 +1927,8 @@ Slice get_first_url(const FormattedText &text) {
         break;
       case MessageEntity::Type::TextUrl: {
         Slice url = entity.argument;
-        string scheme = to_lower(url.substr(0, 4));
-        if (scheme == "ton:" || begins_with(scheme, "tg:") || scheme == "ftp:") {
+        string scheme = to_lower(url.substr(0, 8));
+        if (scheme == "ton:" || begins_with(scheme, "tg:") || scheme == "ftp:" || scheme == "tonsite:") {
           continue;
         }
         return url;
@@ -1839,6 +1946,10 @@ Slice get_first_url(const FormattedText &text) {
       case MessageEntity::Type::Spoiler:
         break;
       case MessageEntity::Type::CustomEmoji:
+        break;
+      case MessageEntity::Type::ExpandableBlockQuote:
+        break;
+      case MessageEntity::Type::FormattedDate:
         break;
       default:
         UNREACHABLE();
@@ -2183,13 +2294,28 @@ Result<vector<MessageEntity>> parse_markdown_v2(string &text) {
       // end of an entity
       auto type = nested_entities.back().type;
       if (c == '\n' && type != MessageEntity::Type::BlockQuote) {
-        return Status::Error(400, PSLICE() << "Can't find end of " << nested_entities.back().type
-                                           << " entity at byte offset " << nested_entities.back().entity_byte_offset);
+        if (type != MessageEntity::Type::Spoiler || !(nested_entities.back().entity_byte_offset == i - 2 ||
+                                                      (nested_entities.back().entity_byte_offset == i - 3 &&
+                                                       result_size != 0 && text[result_size - 1] == '\r'))) {
+          return Status::Error(400, PSLICE() << "Can't find end of " << nested_entities.back().type
+                                             << " entity at byte offset " << nested_entities.back().entity_byte_offset);
+        }
+        nested_entities.pop_back();
+        CHECK(!nested_entities.empty());
+        type = nested_entities.back().type;
+        if (type != MessageEntity::Type::BlockQuote) {
+          CHECK(type != MessageEntity::Type::Spoiler);
+          return Status::Error(400, PSLICE() << "Can't find end of " << nested_entities.back().type
+                                             << " entity at byte offset " << nested_entities.back().entity_byte_offset);
+        }
+        type = MessageEntity::Type::ExpandableBlockQuote;
       }
       auto argument = std::move(nested_entities.back().argument);
       UserId user_id;
       CustomEmojiId custom_emoji_id;
       bool skip_entity = utf16_offset == nested_entities.back().entity_offset;
+      int32 date = 0;
+      int32 date_flags = 0;
       switch (type) {
         case MessageEntity::Type::Bold:
         case MessageEntity::Type::Italic:
@@ -2238,7 +2364,7 @@ Result<vector<MessageEntity>> parse_markdown_v2(string &text) {
         }
         case MessageEntity::Type::CustomEmoji: {
           if (text[i + 1] != '(') {
-            return Status::Error(400, "Custom emoji entity must contain a tg://emoji URL");
+            return Status::Error(400, "The entity must contain a tg://emoji or tg://time URL");
           }
           i += 2;
           string url;
@@ -2252,13 +2378,26 @@ Result<vector<MessageEntity>> parse_markdown_v2(string &text) {
             url += text[i++];
           }
           if (text[i] != ')') {
-            return Status::Error(400, PSLICE()
-                                          << "Can't find end of a custom emoji URL at byte offset " << url_begin_pos);
+            return Status::Error(400, PSLICE() << "Can't find end of a URL at byte offset " << url_begin_pos);
           }
-          TRY_RESULT_ASSIGN(custom_emoji_id, LinkManager::get_link_custom_emoji_id(url));
+          auto r_custom_emoji_id = LinkManager::get_link_custom_emoji_id(url);
+          if (r_custom_emoji_id.is_ok()) {
+            custom_emoji_id = r_custom_emoji_id.move_as_ok();
+          } else {
+            auto r_date_format = LinkManager::get_link_date_format(url);
+            if (r_date_format.is_ok()) {
+              auto date_format = r_date_format.move_as_ok();
+              TRY_RESULT_ASSIGN(date_flags, get_date_flags(date_format.format_));
+              date = date_format.date_;
+              type = MessageEntity::Type::FormattedDate;
+            } else {
+              return Status::Error(400, "Invalid tg://emoji or tg://time URL specified");
+            }
+          }
           break;
         }
         case MessageEntity::Type::BlockQuote:
+        case MessageEntity::Type::ExpandableBlockQuote:
           CHECK(have_blockquote);
           have_blockquote = false;
           text[result_size++] = text[i];
@@ -2278,6 +2417,8 @@ Result<vector<MessageEntity>> parse_markdown_v2(string &text) {
           entities.emplace_back(entity_offset, entity_length, user_id);
         } else if (custom_emoji_id.is_valid()) {
           entities.emplace_back(type, entity_offset, entity_length, custom_emoji_id);
+        } else if (date != 0) {
+          entities.emplace_back(type, entity_offset, entity_length, date, date_flags);
         } else {
           entities.emplace_back(type, entity_offset, entity_length, std::move(argument));
         }
@@ -2287,12 +2428,19 @@ Result<vector<MessageEntity>> parse_markdown_v2(string &text) {
   }
   if (have_blockquote) {
     CHECK(!nested_entities.empty());
+    auto type = MessageEntity::Type::BlockQuote;
+    if (nested_entities.back().type == MessageEntity::Type::Spoiler &&
+        nested_entities.back().entity_byte_offset == text.size() - 2) {
+      nested_entities.pop_back();
+      CHECK(!nested_entities.empty());
+      type = MessageEntity::Type::ExpandableBlockQuote;
+    }
     if (nested_entities.back().type == MessageEntity::Type::BlockQuote) {
       have_blockquote = false;
       auto entity_offset = nested_entities.back().entity_offset;
       auto entity_length = utf16_offset - entity_offset;
       if (entity_length != 0) {
-        entities.emplace_back(MessageEntity::Type::BlockQuote, entity_offset, entity_length);
+        entities.emplace_back(type, entity_offset, entity_length);
       }
       nested_entities.pop_back();
     }
@@ -3209,12 +3357,14 @@ Result<vector<MessageEntity>> parse_html(string &str) {
   struct EntityInfo {
     string tag_name;
     string argument;
+    int32 date;
     int32 entity_offset;
     size_t entity_begin_pos;
 
-    EntityInfo(string &&tag_name, string &&argument, int32 entity_offset, size_t entity_begin_pos)
+    EntityInfo(string &&tag_name, string &&argument, int32 date, int32 entity_offset, size_t entity_begin_pos)
         : tag_name(std::move(tag_name))
         , argument(std::move(argument))
+        , date(std::move(date))
         , entity_offset(entity_offset)
         , entity_begin_pos(entity_begin_pos) {
     }
@@ -3258,13 +3408,14 @@ Result<vector<MessageEntity>> parse_html(string &str) {
       string tag_name = to_lower(Slice(text + begin_pos + 1, i - begin_pos - 1));
       if (tag_name != "a" && tag_name != "b" && tag_name != "strong" && tag_name != "i" && tag_name != "em" &&
           tag_name != "s" && tag_name != "strike" && tag_name != "del" && tag_name != "u" && tag_name != "ins" &&
-          tag_name != "tg-spoiler" && tag_name != "tg-emoji" && tag_name != "span" && tag_name != "pre" &&
-          tag_name != "code" && tag_name != "blockquote") {
+          tag_name != "tg-spoiler" && tag_name != "tg-emoji" && tag_name != "tg-time" && tag_name != "span" &&
+          tag_name != "pre" && tag_name != "code" && tag_name != "blockquote") {
         return Status::Error(400, PSLICE()
                                       << "Unsupported start tag \"" << tag_name << "\" at byte offset " << begin_pos);
       }
 
       string argument;
+      int32 date = 0;
       while (text[i] != '>') {
         while (text[i] != 0 && is_space(text[i])) {
           i++;
@@ -3273,7 +3424,8 @@ Result<vector<MessageEntity>> parse_html(string &str) {
           break;
         }
         auto attribute_begin_pos = i;
-        while (!is_space(text[i]) && text[i] != '=') {
+        while (!is_space(text[i]) && text[i] != '=' && text[i] != '>' && text[i] != '/' && text[i] != '"' &&
+               text[i] != '\'') {
           i++;
         }
         Slice attribute_name(text + attribute_begin_pos, i - attribute_begin_pos);
@@ -3285,8 +3437,14 @@ Result<vector<MessageEntity>> parse_html(string &str) {
           i++;
         }
         if (text[i] != '=') {
-          return Status::Error(400, PSLICE() << "Expected equal sign in declaration of an attribute of the tag \""
-                                             << tag_name << "\" at byte offset " << begin_pos);
+          if (text[i] == 0) {
+            return Status::Error(400, PSLICE()
+                                          << "Unclosed start tag \"" << tag_name << "\" at byte offset " << begin_pos);
+          }
+          if (tag_name == "blockquote" && attribute_name == Slice("expandable")) {
+            argument = "1";
+          }
+          continue;
         }
         i++;
         while (text[i] != 0 && is_space(text[i])) {
@@ -3343,6 +3501,12 @@ Result<vector<MessageEntity>> parse_html(string &str) {
           argument = attribute_value.substr(3);
         } else if (tag_name == "tg-emoji" && attribute_name == Slice("emoji-id")) {
           argument = std::move(attribute_value);
+        } else if (tag_name == "blockquote" && attribute_name == Slice("expandable")) {
+          argument = "1";
+        } else if (tag_name == "tg-time" && attribute_name == Slice("unix")) {
+          date = to_integer<int32>(attribute_value);
+        } else if (tag_name == "tg-time" && attribute_name == Slice("format")) {
+          argument = std::move(attribute_value);
         }
       }
 
@@ -3351,7 +3515,8 @@ Result<vector<MessageEntity>> parse_html(string &str) {
                                       << "Tag \"span\" must have class \"tg-spoiler\" at byte offset " << begin_pos);
       }
 
-      nested_entities.emplace_back(std::move(tag_name), std::move(argument), utf16_offset, result_end - result_begin);
+      nested_entities.emplace_back(std::move(tag_name), std::move(argument), date, utf16_offset,
+                                   result_end - result_begin);
     } else {
       // end of an entity
       if (nested_entities.empty()) {
@@ -3395,6 +3560,12 @@ Result<vector<MessageEntity>> parse_html(string &str) {
           }
           entities.emplace_back(MessageEntity::Type::CustomEmoji, entity_offset, entity_length,
                                 CustomEmojiId(r_document_id.ok()));
+        } else if (tag_name == "tg-time") {
+          TRY_RESULT(date_flags, get_date_flags(nested_entities.back().argument));
+          if (nested_entities.back().date > 0) {
+            entities.emplace_back(MessageEntity::Type::FormattedDate, entity_offset, entity_length,
+                                  nested_entities.back().date, date_flags);
+          }
         } else if (tag_name == "a") {
           auto url = std::move(nested_entities.back().argument);
           if (url.empty()) {
@@ -3428,7 +3599,11 @@ Result<vector<MessageEntity>> parse_html(string &str) {
                                   nested_entities.back().argument);
           }
         } else if (tag_name == "blockquote") {
-          entities.emplace_back(MessageEntity::Type::BlockQuote, entity_offset, entity_length);
+          if (!nested_entities.back().argument.empty()) {
+            entities.emplace_back(MessageEntity::Type::ExpandableBlockQuote, entity_offset, entity_length);
+          } else {
+            entities.emplace_back(MessageEntity::Type::BlockQuote, entity_offset, entity_length);
+          }
         } else {
           UNREACHABLE();
         }
@@ -3438,7 +3613,7 @@ Result<vector<MessageEntity>> parse_html(string &str) {
   }
   if (!nested_entities.empty()) {
     return Status::Error(
-        400, PSLICE() << "Can't find end tag corresponding to start tag " << nested_entities.back().tag_name);
+        400, PSLICE() << "Can't find end tag corresponding to start tag \"" << nested_entities.back().tag_name << '"');
   }
 
   for (auto &entity : entities) {
@@ -3501,7 +3676,7 @@ vector<tl_object_ptr<secret_api::MessageEntity>> get_input_secret_message_entiti
         break;
       case MessageEntity::Type::BlockQuote:
         if (layer >= static_cast<int32>(SecretChatLayer::NewEntities)) {
-          // result.push_back(make_tl_object<secret_api::messageEntityBlockquote>(entity.offset, entity.length));
+          // result.push_back(make_tl_object<secret_api::messageEntityBlockquote>(0, false, entity.offset, entity.length));
         }
         break;
       case MessageEntity::Type::Code:
@@ -3532,6 +3707,14 @@ vector<tl_object_ptr<secret_api::MessageEntity>> get_input_secret_message_entiti
                                                                                 entity.custom_emoji_id.get()));
         }
         break;
+      case MessageEntity::Type::ExpandableBlockQuote:
+        if (layer >= static_cast<int32>(SecretChatLayer::NewEntities)) {
+          // result.push_back(make_tl_object<secret_api::messageEntityBlockquote>(0, true, entity.offset,
+          //     entity.length));
+        }
+        break;
+      case MessageEntity::Type::FormattedDate:
+        break;
       default:
         UNREACHABLE();
     }
@@ -3540,7 +3723,7 @@ vector<tl_object_ptr<secret_api::MessageEntity>> get_input_secret_message_entiti
   return result;
 }
 
-Result<vector<MessageEntity>> get_message_entities(const ContactsManager *contacts_manager,
+Result<vector<MessageEntity>> get_message_entities(const UserManager *user_manager,
                                                    vector<tl_object_ptr<td_api::textEntity>> &&input_entities,
                                                    bool allow_all) {
   vector<MessageEntity> entities;
@@ -3613,8 +3796,8 @@ Result<vector<MessageEntity>> get_message_entities(const ContactsManager *contac
         }
         auto user_id = LinkManager::get_link_user_id(entity->url_);
         if (user_id.is_valid()) {
-          if (contacts_manager != nullptr) {
-            TRY_STATUS(contacts_manager->get_input_user(user_id));
+          if (user_manager != nullptr) {
+            TRY_STATUS(user_manager->get_input_user(user_id));
           }
           entities.emplace_back(offset, length, user_id);
           break;
@@ -3629,8 +3812,8 @@ Result<vector<MessageEntity>> get_message_entities(const ContactsManager *contac
       case td_api::textEntityTypeMentionName::ID: {
         auto entity = static_cast<const td_api::textEntityTypeMentionName *>(input_entity->type_.get());
         UserId user_id(entity->user_id_);
-        if (contacts_manager != nullptr) {
-          TRY_STATUS(contacts_manager->get_input_user(user_id));
+        if (user_manager != nullptr) {
+          TRY_STATUS(user_manager->get_input_user(user_id));
         }
         entities.emplace_back(offset, length, user_id);
         break;
@@ -3655,6 +3838,62 @@ Result<vector<MessageEntity>> get_message_entities(const ContactsManager *contac
         entities.emplace_back(MessageEntity::Type::CustomEmoji, offset, length, custom_emoji_id);
         break;
       }
+      case td_api::textEntityTypeExpandableBlockQuote::ID:
+        entities.emplace_back(MessageEntity::Type::ExpandableBlockQuote, offset, length);
+        break;
+      case td_api::textEntityTypeDateTime::ID: {
+        auto entity = static_cast<const td_api::textEntityTypeDateTime *>(input_entity->type_.get());
+        if (entity->unix_time_ <= 0) {
+          return Status::Error(400, "Invalid date specified");
+        }
+        int32 date_flags = 0;
+        if (entity->formatting_type_ != nullptr) {
+          switch (entity->formatting_type_->get_id()) {
+            case td_api::dateTimeFormattingTypeRelative::ID:
+              date_flags = MessageEntity::DateFlags::Relative;
+              break;
+            case td_api::dateTimeFormattingTypeAbsolute::ID: {
+              auto type = static_cast<const td_api::dateTimeFormattingTypeAbsolute *>(entity->formatting_type_.get());
+              if (type->time_precision_ != nullptr) {
+                switch (type->time_precision_->get_id()) {
+                  case td_api::dateTimePartPrecisionNone::ID:
+                    break;
+                  case td_api::dateTimePartPrecisionShort::ID:
+                    date_flags |= MessageEntity::DateFlags::ShortTime;
+                    break;
+                  case td_api::dateTimePartPrecisionLong::ID:
+                    date_flags |= MessageEntity::DateFlags::LongTime;
+                    break;
+                  default:
+                    UNREACHABLE();
+                }
+              }
+              if (type->date_precision_ != nullptr) {
+                switch (type->date_precision_->get_id()) {
+                  case td_api::dateTimePartPrecisionNone::ID:
+                    break;
+                  case td_api::dateTimePartPrecisionShort::ID:
+                    date_flags |= MessageEntity::DateFlags::ShortDate;
+                    break;
+                  case td_api::dateTimePartPrecisionLong::ID:
+                    date_flags |= MessageEntity::DateFlags::LongDate;
+                    break;
+                  default:
+                    UNREACHABLE();
+                }
+              }
+              if (type->show_day_of_week_) {
+                date_flags |= MessageEntity::DateFlags::DayOfWeek;
+              }
+              break;
+            }
+            default:
+              UNREACHABLE();
+          }
+        }
+        entities.emplace_back(MessageEntity::Type::FormattedDate, offset, length, entity->unix_time_, date_flags);
+        break;
+      }
       default:
         UNREACHABLE();
     }
@@ -3666,7 +3905,7 @@ Result<vector<MessageEntity>> get_message_entities(const ContactsManager *contac
   return std::move(entities);
 }
 
-vector<MessageEntity> get_message_entities(const ContactsManager *contacts_manager,
+vector<MessageEntity> get_message_entities(const UserManager *user_manager,
                                            vector<tl_object_ptr<telegram_api::MessageEntity>> &&server_entities,
                                            const char *source) {
   vector<MessageEntity> entities;
@@ -3742,7 +3981,8 @@ vector<MessageEntity> get_message_entities(const ContactsManager *contacts_manag
       }
       case telegram_api::messageEntityBlockquote::ID: {
         auto entity = static_cast<const telegram_api::messageEntityBlockquote *>(server_entity.get());
-        entities.emplace_back(MessageEntity::Type::BlockQuote, entity->offset_, entity->length_);
+        auto type = entity->collapsed_ ? MessageEntity::Type::ExpandableBlockQuote : MessageEntity::Type::BlockQuote;
+        entities.emplace_back(type, entity->offset_, entity->length_);
         break;
       }
       case telegram_api::messageEntityCode::ID: {
@@ -3777,13 +4017,12 @@ vector<MessageEntity> get_message_entities(const ContactsManager *contacts_manag
           LOG(ERROR) << "Receive invalid " << user_id << " in MentionName from " << source;
           continue;
         }
-        if (contacts_manager == nullptr) {
+        if (user_manager == nullptr) {
           LOG(ERROR) << "Receive unknown " << user_id << " in MentionName from " << source;
           continue;
         }
-        auto r_input_user = contacts_manager->get_input_user(user_id);
-        if (r_input_user.is_error()) {
-          LOG(ERROR) << "Receive wrong " << user_id << ": " << r_input_user.error() << " from " << source;
+        if (!user_manager->have_min_user(user_id)) {
+          LOG(ERROR) << "Receive wrong " << user_id << " from " << source;
           continue;
         }
         entities.emplace_back(entity->offset_, entity->length_, user_id);
@@ -3793,6 +4032,34 @@ vector<MessageEntity> get_message_entities(const ContactsManager *contacts_manag
         auto entity = static_cast<const telegram_api::messageEntityCustomEmoji *>(server_entity.get());
         entities.emplace_back(MessageEntity::Type::CustomEmoji, entity->offset_, entity->length_,
                               CustomEmojiId(entity->document_id_));
+        break;
+      }
+      case telegram_api::messageEntityFormattedDate::ID: {
+        auto entity = static_cast<const telegram_api::messageEntityFormattedDate *>(server_entity.get());
+        if (entity->date_ <= 0) {
+          LOG(ERROR) << "Receive wrong date " << entity->date_;
+          continue;
+        }
+        int32 date_flags = 0;
+        if (entity->relative_) {
+          date_flags = MessageEntity::DateFlags::Relative;
+        } else {
+          if (entity->short_time_) {
+            date_flags |= MessageEntity::DateFlags::ShortTime;
+          } else if (entity->long_time_) {
+            date_flags |= MessageEntity::DateFlags::LongTime;
+          }
+          if (entity->short_date_) {
+            date_flags |= MessageEntity::DateFlags::ShortDate;
+          } else if (entity->long_date_) {
+            date_flags |= MessageEntity::DateFlags::LongDate;
+          }
+          if (entity->day_of_week_) {
+            date_flags |= MessageEntity::DateFlags::DayOfWeek;
+          }
+        }
+        entities.emplace_back(MessageEntity::Type::FormattedDate, entity->offset_, entity->length_, entity->date_,
+                              date_flags);
         break;
       }
       default:
@@ -3831,18 +4098,12 @@ vector<MessageEntity> get_message_entities(Td *td, vector<tl_object_ptr<secret_a
       case secret_api::messageEntityBankCard::ID:
         // skip, will find it ourselves
         break;
-      case secret_api::messageEntityUrl::ID: {
-        auto entity = static_cast<const secret_api::messageEntityUrl *>(secret_entity.get());
-        // TODO skip URL when find_urls will be better
-        entities.emplace_back(MessageEntity::Type::Url, entity->offset_, entity->length_);
+      case secret_api::messageEntityUrl::ID:
+        // skip, will find it ourselves
         break;
-      }
-      case secret_api::messageEntityEmail::ID: {
-        auto entity = static_cast<const secret_api::messageEntityEmail *>(secret_entity.get());
-        // TODO skip emails when find_urls will be better
-        entities.emplace_back(MessageEntity::Type::EmailAddress, entity->offset_, entity->length_);
+      case secret_api::messageEntityEmail::ID:
+        // skip, will find it ourselves
         break;
-      }
       case secret_api::messageEntityBold::ID: {
         auto entity = static_cast<const secret_api::messageEntityBold *>(secret_entity.get());
         entities.emplace_back(MessageEntity::Type::Bold, entity->offset_, entity->length_);
@@ -3942,27 +4203,37 @@ vector<MessageEntity> get_message_entities(Td *td, vector<tl_object_ptr<secret_a
   return entities;
 }
 
-telegram_api::object_ptr<telegram_api::textWithEntities> get_input_text_with_entities(
-    const ContactsManager *contacts_manager, const FormattedText &text, const char *source) {
+telegram_api::object_ptr<telegram_api::textWithEntities> get_input_text_with_entities(const UserManager *user_manager,
+                                                                                      const FormattedText &text,
+                                                                                      const char *source) {
   return telegram_api::make_object<telegram_api::textWithEntities>(
-      text.text, get_input_message_entities(contacts_manager, text.entities, source));
+      text.text, get_input_message_entities(user_manager, text.entities, source));
 }
 
-FormattedText get_formatted_text(const ContactsManager *contacts_manager,
-                                 telegram_api::object_ptr<telegram_api::textWithEntities> text_with_entities,
-                                 bool allow_empty, bool skip_new_entities, bool skip_bot_commands,
+FormattedText get_formatted_text(const UserManager *user_manager, string &&text,
+                                 vector<telegram_api::object_ptr<telegram_api::MessageEntity>> &&server_entities,
                                  bool skip_media_timestamps, bool skip_trim, const char *source) {
-  CHECK(text_with_entities != nullptr);
-  auto entities = get_message_entities(contacts_manager, std::move(text_with_entities->entities_), source);
-  auto status = fix_formatted_text(text_with_entities->text_, entities, allow_empty, skip_new_entities,
-                                   skip_bot_commands, skip_media_timestamps, skip_trim);
+  auto entities = get_message_entities(user_manager, std::move(server_entities), source);
+  auto status = fix_formatted_text(text, entities, true, false, true, true, skip_media_timestamps, skip_trim);
   if (status.is_error()) {
-    if (!clean_input_string(text_with_entities->text_)) {
-      text_with_entities->text_.clear();
+    LOG(ERROR) << "Receive error " << status << " from " << source << " while parsing \"" << text << "\"("
+               << hex_encode(text) << ')';
+    if (!clean_input_string(text)) {
+      text.clear();
     }
-    entities = find_entities(text_with_entities->text_, skip_bot_commands, skip_media_timestamps);
+    entities = find_entities(text, true, skip_media_timestamps);
   }
-  return {std::move(text_with_entities->text_), std::move(entities)};
+  return {std::move(text), std::move(entities)};
+}
+
+FormattedText get_formatted_text(const UserManager *user_manager,
+                                 telegram_api::object_ptr<telegram_api::textWithEntities> text_with_entities,
+                                 bool skip_media_timestamps, bool skip_trim, const char *source) {
+  if (text_with_entities == nullptr) {
+    return FormattedText();
+  }
+  return get_formatted_text(user_manager, std::move(text_with_entities->text_),
+                            std::move(text_with_entities->entities_), skip_media_timestamps, skip_trim, source);
 }
 
 // like clean_input_string but also fixes entities
@@ -4157,7 +4428,7 @@ static std::pair<size_t, int32> remove_invalid_entities(const string &text, vect
   return {last_non_whitespace_pos, last_non_whitespace_utf16_offset};
 }
 
-// enitities must contain only splittable entities
+// entities must contain only splittable entities
 static void split_entities(vector<MessageEntity> &entities, const vector<MessageEntity> &other_entities) {
   check_is_sorted(entities);
   check_is_sorted(other_entities);
@@ -4246,7 +4517,7 @@ static vector<MessageEntity> resplit_entities(vector<MessageEntity> &&splittable
   return std::move(entities);
 }
 
-static void fix_entities(vector<MessageEntity> &entities) {
+void fix_entities(vector<MessageEntity> &entities) {
   sort_entities(entities);
 
   if (are_entities_valid(entities)) {
@@ -4320,8 +4591,9 @@ static void merge_new_entities(vector<MessageEntity> &entities, vector<MessageEn
   check_is_sorted(entities);
 }
 
-Status fix_formatted_text(string &text, vector<MessageEntity> &entities, bool allow_empty, bool skip_new_entities,
-                          bool skip_bot_commands, bool skip_media_timestamps, bool skip_trim, int32 *ltrim_count) {
+Status fix_formatted_text(string &text, vector<MessageEntity> &entities, bool allow_empty, bool allow_empty_string,
+                          bool skip_new_entities, bool skip_bot_commands, bool skip_media_timestamps, bool skip_trim,
+                          int32 *ltrim_count) {
   string result;
   if (entities.empty()) {
     // fast path
@@ -4361,7 +4633,7 @@ Status fix_formatted_text(string &text, vector<MessageEntity> &entities, bool al
       entities.clear();
       return Status::OK();
     }
-    return Status::Error(400, "Message must be non-empty");
+    return Status::Error(400, "Text must be non-empty");
   }
 
   // re-fix entities if needed after removal of some characters
@@ -4416,11 +4688,17 @@ Status fix_formatted_text(string &text, vector<MessageEntity> &entities, bool al
   }
   LOG_CHECK(check_utf8(text)) << text;
 
-  if (!allow_empty && is_empty_string(text)) {
-    return Status::Error(400, "Message must be non-empty");
+  if (is_empty_string(text)) {
+    if (!allow_empty) {
+      return Status::Error(400, "Text must be non-empty");
+    }
+    if (!allow_empty_string) {
+      text.clear();
+      entities.clear();
+    }
   }
 
-  constexpr size_t LENGTH_LIMIT = 35000;  // server side limit
+  constexpr size_t LENGTH_LIMIT = 35000;  // server-side limit
   if (text.size() > LENGTH_LIMIT) {
     size_t new_size = LENGTH_LIMIT;
     while (!is_utf8_character_first_code_unit(text[new_size])) {
@@ -4442,20 +4720,21 @@ Status fix_formatted_text(string &text, vector<MessageEntity> &entities, bool al
   return Status::OK();
 }
 
-FormattedText get_message_text(const ContactsManager *contacts_manager, string message_text,
+FormattedText get_message_text(const UserManager *user_manager, string message_text,
                                vector<tl_object_ptr<telegram_api::MessageEntity>> &&server_entities,
                                bool skip_new_entities, bool skip_media_timestamps, int32 send_date, bool from_album,
                                const char *source) {
-  auto entities = get_message_entities(contacts_manager, std::move(server_entities), source);
+  auto entities = get_message_entities(user_manager, std::move(server_entities), source);
   auto debug_message_text = message_text;
   auto debug_entities = entities;
-  auto status = fix_formatted_text(message_text, entities, true, skip_new_entities, true, skip_media_timestamps, false);
+  auto status =
+      fix_formatted_text(message_text, entities, true, false, skip_new_entities, true, skip_media_timestamps, false);
   if (status.is_error()) {
     // message entities in media albums can be wrong because of a long time ago fixed server-side bug
     if (!from_album && (send_date == 0 || send_date > 1600340000)) {  // approximate fix date
       LOG(ERROR) << "Receive error " << status << " while parsing message text from " << source << " sent at "
                  << send_date << " with content \"" << debug_message_text << "\" -> \"" << message_text
-                 << "\" with entities " << format::as_array(debug_entities) << " -> " << format::as_array(entities);
+                 << "\" with entities " << debug_entities << " -> " << entities;
     }
     if (!clean_input_string(message_text)) {
       message_text.clear();
@@ -4484,38 +4763,6 @@ void truncate_formatted_text(FormattedText &text, size_t length) {
   remove_empty_entities(text.entities);
 }
 
-td_api::object_ptr<td_api::formattedText> extract_input_caption(
-    tl_object_ptr<td_api::InputMessageContent> &input_message_content) {
-  switch (input_message_content->get_id()) {
-    case td_api::inputMessageAnimation::ID: {
-      auto input_animation = static_cast<td_api::inputMessageAnimation *>(input_message_content.get());
-      return std::move(input_animation->caption_);
-    }
-    case td_api::inputMessageAudio::ID: {
-      auto input_audio = static_cast<td_api::inputMessageAudio *>(input_message_content.get());
-      return std::move(input_audio->caption_);
-    }
-    case td_api::inputMessageDocument::ID: {
-      auto input_document = static_cast<td_api::inputMessageDocument *>(input_message_content.get());
-      return std::move(input_document->caption_);
-    }
-    case td_api::inputMessagePhoto::ID: {
-      auto input_photo = static_cast<td_api::inputMessagePhoto *>(input_message_content.get());
-      return std::move(input_photo->caption_);
-    }
-    case td_api::inputMessageVideo::ID: {
-      auto input_video = static_cast<td_api::inputMessageVideo *>(input_message_content.get());
-      return std::move(input_video->caption_);
-    }
-    case td_api::inputMessageVoiceNote::ID: {
-      auto input_voice_note = static_cast<td_api::inputMessageVoiceNote *>(input_message_content.get());
-      return std::move(input_voice_note->caption_);
-    }
-    default:
-      return nullptr;
-  }
-}
-
 Result<FormattedText> get_formatted_text(const Td *td, DialogId dialog_id,
                                          td_api::object_ptr<td_api::formattedText> &&text, bool is_bot,
                                          bool allow_empty, bool skip_media_timestamps, bool skip_trim,
@@ -4528,18 +4775,18 @@ Result<FormattedText> get_formatted_text(const Td *td, DialogId dialog_id,
     return Status::Error(400, "Text must be non-empty");
   }
 
-  TRY_RESULT(entities, get_message_entities(td->contacts_manager_.get(), std::move(text->entities_)));
-  auto need_skip_bot_commands = need_always_skip_bot_commands(td->contacts_manager_.get(), dialog_id, is_bot);
+  TRY_RESULT(entities, get_message_entities(td->user_manager_.get(), std::move(text->entities_)));
+  auto need_skip_bot_commands = need_always_skip_bot_commands(td->user_manager_.get(), dialog_id, is_bot);
   bool parse_markdown = td->option_manager_->get_option_boolean("always_parse_markdown");
   bool skip_new_entities = is_bot && td->option_manager_->get_option_integer("session_count") > 1;
-  TRY_STATUS(fix_formatted_text(text->text_, entities, allow_empty, skip_new_entities || parse_markdown,
-                                skip_new_entities || need_skip_bot_commands,
+  TRY_STATUS(fix_formatted_text(text->text_, entities, allow_empty, allow_empty && is_bot,
+                                skip_new_entities || parse_markdown, skip_new_entities || need_skip_bot_commands,
                                 is_bot || skip_media_timestamps || parse_markdown, skip_trim, ltrim_count));
 
   FormattedText result{std::move(text->text_), std::move(entities)};
   if (parse_markdown) {
     result = parse_markdown_v3(std::move(result));
-    fix_formatted_text(result.text, result.entities, allow_empty, false, need_skip_bot_commands,
+    fix_formatted_text(result.text, result.entities, allow_empty, allow_empty && is_bot, false, need_skip_bot_commands,
                        is_bot || skip_media_timestamps, skip_trim, nullptr)
         .ensure();
   }
@@ -4581,7 +4828,7 @@ bool has_bot_commands(const FormattedText *text) {
   return false;
 }
 
-bool need_always_skip_bot_commands(const ContactsManager *contacts_manager, DialogId dialog_id, bool is_bot) {
+bool need_always_skip_bot_commands(const UserManager *user_manager, DialogId dialog_id, bool is_bot) {
   if (!dialog_id.is_valid()) {
     return true;
   }
@@ -4592,11 +4839,12 @@ bool need_always_skip_bot_commands(const ContactsManager *contacts_manager, Dial
   switch (dialog_id.get_type()) {
     case DialogType::User: {
       auto user_id = dialog_id.get_user_id();
-      return user_id == ContactsManager::get_replies_bot_user_id() || !contacts_manager->is_user_bot(user_id);
+      return user_id == UserManager::get_replies_bot_user_id() ||
+             user_id == UserManager::get_verification_codes_bot_user_id() || !user_manager->is_user_bot(user_id);
     }
     case DialogType::SecretChat: {
-      auto user_id = contacts_manager->get_secret_chat_user_id(dialog_id.get_secret_chat_id());
-      return !user_id.is_valid() || !contacts_manager->is_user_bot(user_id);
+      auto user_id = user_manager->get_secret_chat_user_id(dialog_id.get_secret_chat_id());
+      return !user_id.is_valid() || !user_manager->is_user_bot(user_id);
     }
     case DialogType::Chat:
     case DialogType::Channel:
@@ -4608,7 +4856,7 @@ bool need_always_skip_bot_commands(const ContactsManager *contacts_manager, Dial
   }
 }
 
-vector<tl_object_ptr<telegram_api::MessageEntity>> get_input_message_entities(const ContactsManager *contacts_manager,
+vector<tl_object_ptr<telegram_api::MessageEntity>> get_input_message_entities(const UserManager *user_manager,
                                                                               const vector<MessageEntity> &entities,
                                                                               const char *source) {
   vector<tl_object_ptr<telegram_api::MessageEntity>> result;
@@ -4634,7 +4882,7 @@ vector<tl_object_ptr<telegram_api::MessageEntity>> get_input_message_entities(co
     user_entity_count++;
     switch (entity.type) {
       case MessageEntity::Type::BlockQuote:
-        result.push_back(make_tl_object<telegram_api::messageEntityBlockquote>(entity.offset, entity.length));
+        result.push_back(make_tl_object<telegram_api::messageEntityBlockquote>(0, false, entity.offset, entity.length));
         break;
       case MessageEntity::Type::Code:
         result.push_back(make_tl_object<telegram_api::messageEntityCode>(entity.offset, entity.length));
@@ -4650,11 +4898,24 @@ vector<tl_object_ptr<telegram_api::MessageEntity>> get_input_message_entities(co
             make_tl_object<telegram_api::messageEntityTextUrl>(entity.offset, entity.length, entity.argument));
         break;
       case MessageEntity::Type::MentionName: {
-        auto input_user = contacts_manager->get_input_user_force(entity.user_id);
+        CHECK(user_manager != nullptr);
+        auto input_user = user_manager->get_input_user_force(entity.user_id);
         result.push_back(make_tl_object<telegram_api::inputMessageEntityMentionName>(entity.offset, entity.length,
                                                                                      std::move(input_user)));
         break;
       }
+      case MessageEntity::Type::ExpandableBlockQuote:
+        result.push_back(make_tl_object<telegram_api::messageEntityBlockquote>(0, true, entity.offset, entity.length));
+        break;
+      case MessageEntity::Type::FormattedDate:
+        result.push_back(make_tl_object<telegram_api::messageEntityFormattedDate>(
+            0, (entity.date_flags & MessageEntity::DateFlags::Relative) != 0,
+            (entity.date_flags & MessageEntity::DateFlags::ShortTime) != 0,
+            (entity.date_flags & MessageEntity::DateFlags::LongTime) != 0,
+            (entity.date_flags & MessageEntity::DateFlags::ShortDate) != 0,
+            (entity.date_flags & MessageEntity::DateFlags::LongDate) != 0,
+            (entity.date_flags & MessageEntity::DateFlags::DayOfWeek) != 0, entity.offset, entity.length, entity.date));
+        break;
       default:
         UNREACHABLE();
     }
@@ -4690,13 +4951,32 @@ vector<tl_object_ptr<telegram_api::MessageEntity>> get_input_message_entities(co
   return result;
 }
 
-vector<tl_object_ptr<telegram_api::MessageEntity>> get_input_message_entities(const ContactsManager *contacts_manager,
+vector<tl_object_ptr<telegram_api::MessageEntity>> get_input_message_entities(const UserManager *user_manager,
                                                                               const FormattedText *text,
                                                                               const char *source) {
   if (text != nullptr && !text->entities.empty()) {
-    return get_input_message_entities(contacts_manager, text->entities, source);
+    return get_input_message_entities(user_manager, text->entities, source);
   }
   return {};
+}
+
+bool is_allowed_quote_entity_type(MessageEntity::Type type) {
+  switch (type) {
+    case MessageEntity::Type::Bold:
+    case MessageEntity::Type::Italic:
+    case MessageEntity::Type::Underline:
+    case MessageEntity::Type::Strikethrough:
+    case MessageEntity::Type::Spoiler:
+    case MessageEntity::Type::CustomEmoji:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool keep_only_custom_emoji(FormattedText &text) {
+  return td::remove_if(text.entities,
+                       [](const MessageEntity &entity) { return entity.type != MessageEntity::Type::CustomEmoji; });
 }
 
 void remove_premium_custom_emoji_entities(const Td *td, vector<MessageEntity> &entities, bool remove_unknown) {
@@ -4712,15 +4992,19 @@ void remove_unallowed_entities(const Td *td, FormattedText &text, DialogId dialo
   }
 
   if (dialog_id.get_type() == DialogType::SecretChat) {
-    auto layer = td->contacts_manager_->get_secret_chat_layer(dialog_id.get_secret_chat_id());
+    auto layer = td->user_manager_->get_secret_chat_layer(dialog_id.get_secret_chat_id());
     td::remove_if(text.entities, [layer](const MessageEntity &entity) {
       if (layer < static_cast<int32>(SecretChatLayer::NewEntities) &&
           (entity.type == MessageEntity::Type::Underline || entity.type == MessageEntity::Type::Strikethrough ||
-           entity.type == MessageEntity::Type::BlockQuote)) {
+           entity.type == MessageEntity::Type::BlockQuote ||
+           entity.type == MessageEntity::Type::ExpandableBlockQuote)) {
         return true;
       }
       if (layer < static_cast<int32>(SecretChatLayer::SpoilerAndCustomEmojiEntities) &&
           (entity.type == MessageEntity::Type::Spoiler || entity.type == MessageEntity::Type::CustomEmoji)) {
+        return true;
+      }
+      if (entity.type == MessageEntity::Type::FormattedDate) {
         return true;
       }
       return false;
@@ -4731,69 +5015,9 @@ void remove_unallowed_entities(const Td *td, FormattedText &text, DialogId dialo
       remove_intersecting_entities(text.entities);
     }
   }
-  if (dialog_id != td->dialog_manager_->get_my_dialog_id() &&
-      !td->contacts_manager_->can_use_premium_custom_emoji(dialog_id)) {
-    remove_premium_custom_emoji_entities(td, text.entities, false);
+  if (!td->dialog_manager_->can_use_premium_custom_emoji_in_dialog(dialog_id)) {
+    remove_premium_custom_emoji_entities(td, text.entities, true);
   }
-}
-
-int32 search_quote(FormattedText &&text, FormattedText &&quote, int32 quote_position) {
-  auto process_quote_entities = [](FormattedText &text, int32 length) {
-    remove_unallowed_quote_entities(text);
-    td::remove_if(text.entities, [length](const MessageEntity &entity) {
-      if (entity.offset < 0 || entity.offset >= length) {
-        return true;
-      }
-      if (entity.length <= 0 || entity.length > length - entity.offset) {
-        return true;
-      }
-      return false;
-    });
-    remove_empty_entities(text.entities);
-    fix_entities(text.entities);
-    remove_empty_entities(text.entities);
-  };
-  int32 length = text_length(text.text);
-  int32 quote_length = text_length(quote.text);
-  if (quote_length == 0 || quote_length > length) {
-    return -1;
-  }
-  process_quote_entities(text, length);
-  process_quote_entities(quote, quote_length);
-
-  quote_position = clamp(quote_position, 0, length - 1);
-  vector<size_t> byte_positions;
-  byte_positions.reserve(length);
-  for (size_t i = 0; i < text.text.size(); i++) {
-    auto c = static_cast<unsigned char>(text.text[i]);
-    if (is_utf8_character_first_code_unit(c)) {
-      byte_positions.push_back(i);
-      if (c >= 0xf0) {  // >= 4 bytes in symbol => surrogate pair
-        byte_positions.push_back(string::npos);
-      }
-    }
-  }
-  CHECK(byte_positions.size() == static_cast<size_t>(length));
-  auto check_position = [&text, &quote, &byte_positions, length, quote_length](int32 position) {
-    if (position < 0 || position > length - quote_length) {
-      return false;
-    }
-    auto byte_position = byte_positions[position];
-    if (byte_position == string::npos || text.text[byte_position] != quote.text[0] ||
-        Slice(text.text).substr(byte_position, quote.text.size()) != quote.text) {
-      return false;
-    }
-    return true;
-  };
-  for (int32 i = 0; quote_position - i >= 0 || quote_position + i + 1 <= length - quote_length; i++) {
-    if (check_position(quote_position - i)) {
-      return quote_position - i;
-    }
-    if (check_position(quote_position + i + 1)) {
-      return quote_position + i + 1;
-    }
-  }
-  return -1;
 }
 
 }  // namespace td

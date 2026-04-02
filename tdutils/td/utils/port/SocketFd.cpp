@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -643,7 +643,7 @@ Result<SocketFd> SocketFd::open(const IPAddress &address) {
   while (native_fd.socket() < MINIMUM_FILE_DESCRIPTOR) {
     native_fd.close();
     LOG(ERROR) << "Receive " << native_fd << " as a file descriptor";
-    int dummy_fd = detail::skip_eintr([&] { return ::open("/dev/null", O_RDONLY, 0); });
+    int dummy_fd = detail::skip_eintr([] { return ::open("/dev/null", O_RDONLY, 0); });
     if (dummy_fd < 0) {
       return OS_ERROR("Can't open /dev/null");
     }
@@ -715,6 +715,14 @@ Result<size_t> SocketFd::writev(Span<IoSlice> slices) {
 Result<size_t> SocketFd::read(MutableSlice slice) {
   CHECK(!empty());
   return impl_->read(slice);
+}
+
+Result<uint32> SocketFd::maximize_snd_buffer(uint32 max_size) {
+  return get_native_fd().maximize_snd_buffer(max_size);
+}
+
+Result<uint32> SocketFd::maximize_rcv_buffer(uint32 max_size) {
+  return get_native_fd().maximize_rcv_buffer(max_size);
 }
 
 }  // namespace td

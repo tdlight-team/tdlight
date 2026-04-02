@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -87,7 +87,7 @@ std::string TD_TL_writer_jni_h::gen_output_begin_once() const {
                      ";\n"
                      "using BaseObject = " +
                      gen_base_tl_class_name());
-  return result + "const char *&get_package_name_ref();\n\n";
+  return result + "const char *&get_package_name_ref();\nconst char *get_git_commit_hash();\n\n";
 }
 
 std::string TD_TL_writer_jni_h::gen_class_begin(const std::string &class_name, const std::string &base_class_name,

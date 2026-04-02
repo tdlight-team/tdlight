@@ -1,15 +1,16 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/telegram/Dependencies.h"
 
-#include "td/telegram/ContactsManager.h"
+#include "td/telegram/ChatManager.h"
 #include "td/telegram/DialogManager.h"
 #include "td/telegram/StoryManager.h"
 #include "td/telegram/Td.h"
+#include "td/telegram/UserManager.h"
 #include "td/telegram/WebPagesManager.h"
 
 #include "td/utils/common.h"
@@ -92,7 +93,7 @@ void Dependencies::add_message_sender_dependencies(DialogId dialog_id) {
 bool Dependencies::resolve_force(Td *td, const char *source, bool ignore_errors) const {
   bool success = true;
   for (auto user_id : user_ids) {
-    if (!td->contacts_manager_->have_user_force(user_id, source)) {
+    if (!td->user_manager_->have_user_force(user_id, source)) {
       if (!ignore_errors) {
         LOG(ERROR) << "Can't find " << user_id << " from " << source;
       }
@@ -100,7 +101,7 @@ bool Dependencies::resolve_force(Td *td, const char *source, bool ignore_errors)
     }
   }
   for (auto chat_id : chat_ids) {
-    if (!td->contacts_manager_->have_chat_force(chat_id, source)) {
+    if (!td->chat_manager_->have_chat_force(chat_id, source)) {
       if (!ignore_errors) {
         LOG(ERROR) << "Can't find " << chat_id << " from " << source;
       }
@@ -108,8 +109,8 @@ bool Dependencies::resolve_force(Td *td, const char *source, bool ignore_errors)
     }
   }
   for (auto channel_id : channel_ids) {
-    if (!td->contacts_manager_->have_channel_force(channel_id, source)) {
-      if (td->contacts_manager_->have_min_channel(channel_id)) {
+    if (!td->chat_manager_->have_channel_force(channel_id, source)) {
+      if (td->chat_manager_->have_min_channel(channel_id)) {
         LOG(INFO) << "Can't find " << channel_id << " from " << source << ", but have it as a min-channel";
         continue;
       }
@@ -120,7 +121,7 @@ bool Dependencies::resolve_force(Td *td, const char *source, bool ignore_errors)
     }
   }
   for (auto secret_chat_id : secret_chat_ids) {
-    if (!td->contacts_manager_->have_secret_chat_force(secret_chat_id, source)) {
+    if (!td->user_manager_->have_secret_chat_force(secret_chat_id, source)) {
       if (!ignore_errors) {
         LOG(ERROR) << "Can't find " << secret_chat_id << " from " << source;
       }
@@ -141,7 +142,7 @@ bool Dependencies::resolve_force(Td *td, const char *source, bool ignore_errors)
       LOG(INFO) << "Can't find " << web_page_id << " from " << source;
     }
   }
-  for (auto story_full_id : story_full_ids) {
+  for (const auto &story_full_id : story_full_ids) {
     if (!td->story_manager_->have_story_force(story_full_id)) {
       LOG(INFO) << "Can't find " << story_full_id << " from " << source;
     }

@@ -220,6 +220,7 @@
       <option>Elixir</option>
       <option>Vala</option>
       <option>C</option>
+      <option>Assembly</option>
       <option>G</option>
       <option>Other</option>
     </select>
@@ -240,14 +241,12 @@
       <option>Alpine</option>
       <option>CentOS 7</option>
       <option>CentOS 8</option>
-      <option>Debian 8</option>
-      <option>Debian 9</option>
+      <option>CentOS Stream 9</option>
       <option>Debian 10+</option>
-      <option>Ubuntu 14</option>
-      <option>Ubuntu 16</option>
       <option>Ubuntu 18</option>
       <option>Ubuntu 20</option>
       <option>Ubuntu 22</option>
+      <option>Ubuntu 24</option>
       <option>Other</option>
     </select>
     <p></p>
@@ -368,10 +367,10 @@ function getSupportedOs(language) {
     case 'C#':
       return ['Windows (through C++/CLI)', 'Universal Windows Platform (through C++/CX)', 'Windows (.NET Core)', 'Linux (.NET Core)', 'macOS (.NET Core)', 'FreeBSD (.NET Core)'];
     case 'Dart':
-      return ['Android', 'iOS', 'Windows', 'Linux', 'macOS', 'tvOS', 'watchOS'];
+      return ['Android', 'iOS', 'Windows', 'Linux', 'macOS', 'tvOS', 'visionOS', 'watchOS'];
     case 'Swift':
     case 'Objective-C':
-      return ['Windows', 'Linux', 'macOS', 'iOS', 'tvOS', 'watchOS'];
+      return ['Windows', 'Linux', 'macOS', 'iOS', 'tvOS', 'visionOS', 'watchOS'];
     default:
       return ['Windows', 'Linux', 'macOS', 'FreeBSD', 'OpenBSD', 'NetBSD'];
   }
@@ -400,6 +399,7 @@ function getExampleAnchor(language) {
     case 'Elixir':
     case 'Vala':
     case 'C':
+    case 'Assembly':
     case 'G':
       return language.toLowerCase();
     case 'Object Pascal':
@@ -472,9 +472,12 @@ function getTarget(language, os) {
     return 'WebAssembly';
   }
   if (os.includes('Android')) {
+    if (language === 'Dart') {
+      return 'AndroidJson';
+    }
     return 'Android';
   }
-  if (os.includes('iOS') || os.includes('tvOS') || os.includes('watchOS')) {
+  if (os.includes('iOS') || os.includes('tvOS') || os.includes('visionOS') || os.includes('watchOS')) {
     return 'iOS';
   }
 
@@ -641,7 +644,7 @@ function onOptionsChanged() {
   var use_vcpkg = os_windows;
 
   var use_lto = false;
-  if (!use_msvc && language !== 'Go' && language !== 'Java' && language !== 'Kotlin' && (os_mac || (os_linux && (linux_distro === 'Ubuntu 18' || linux_distro === 'Ubuntu 20' || linux_distro === 'Ubuntu 22' || linux_distro === 'Other')))) {
+  if (!use_msvc && language !== 'Go' && language !== 'Java' && language !== 'Kotlin' && (os_mac || (os_linux && (linux_distro === 'Ubuntu 18' || linux_distro === 'Ubuntu 20' || linux_distro === 'Ubuntu 22' || linux_distro === 'Ubuntu 24' || linux_distro === 'Other')))) {
     document.getElementById('buildLtoDiv').style.display = 'block';
     use_lto = document.getElementById('buildLtoCheckbox').checked;
   } else {
@@ -728,13 +731,13 @@ function onOptionsChanged() {
     if (os_windows) {
       pre_text.push('Download and install <a href="https://www.oracle.com/technetwork/java/javase/downloads/index.html">JDK</a>.');
     } else if (os_linux && linux_distro === 'Alpine') {
-      pre_text.push('Add community repository for your Alpine version (not edge) in /etc/apk/repositories. For example, you can do it through vim, preliminary installing it via "apk add --update vim".');
+      pre_text.push('Add community repository for your Alpine version (not edge) in /etc/apk/repositories. For example, you can do it through vim, preliminary installing it via "apk add vim".');
     }
   }
   if (os_linux && linux_distro === 'Other') {
     var jdk = target === 'JNI' ? ', JDK ' : '';
     var compiler = use_clang ? 'clang >= 3.4, libc++' : 'g++ >= 4.9.2';
-    pre_text.push('Install Git, ' + compiler + ', make, CMake >= 3.0.2, OpenSSL-dev, zlib-dev, gperf, PHP' + jdk + ' using your package manager.');
+    pre_text.push('Install Git, ' + compiler + ', make, CMake >= 3.10, OpenSSL-dev, zlib-dev, gperf, PHP' + jdk + ' using your package manager.');
   }
   if (os_linux && os.includes('Node.js')) {
     pre_text.push('Note that for Node.js &ge; 17 you must build TDLib with OpenSSL 3.0.*, for Node.js &ge; 10 with OpenSSL 1.1.*, and for Node.js &lt; 10 with OpenSSL 1.0.*, so you may need to modify the following commands to install a proper OpenSSL version.');
@@ -794,14 +797,25 @@ function onOptionsChanged() {
 
   function getClangVersionSuffix() {
     switch (linux_distro) {
-      case 'Ubuntu 14':
-        return '-3.9';
       case 'Ubuntu 18':
         return '-6.0';
       case 'Ubuntu 20':
         return '-10';
       case 'Ubuntu 22':
         return '-14';
+      case 'Ubuntu 24':
+        return '-18';
+      default:
+        return ''; // use default version
+    }
+  }
+
+  function getLibcplusplusVersionSuffix() {
+    switch (linux_distro) {
+      case 'Ubuntu 20':
+      case 'Ubuntu 22':
+      case 'Ubuntu 24':
+        return getClangVersionSuffix();
       default:
         return ''; // use default version
     }
@@ -827,66 +841,54 @@ function onOptionsChanged() {
         if (target === 'JNI') {
           packages += ' openjdk8';
         }
-        commands.push(sudo + 'apk add --update ' + packages);
+        commands.push(sudo + 'apk add ' + packages);
         break;
       case 'CentOS 7':
-      case 'CentOS 8':
         commands.push(sudo + 'yum update -y');
-        var packages = 'gcc-c++ make git zlib-devel openssl-devel php';
-        if (linux_distro === 'CentOS 7') {
-          commands.push(sudo + 'yum install -y centos-release-scl-rh epel-release');
-          commands.push(sudo + 'yum install -y devtoolset-9-gcc devtoolset-9-gcc-c++');
-          cmake = 'cmake3';
-          packages += ' gperf';
-        } else {
-          commands.push(sudo + 'dnf --enablerepo=powertools install gperf');
-        }
-        packages += ' ' + cmake;
+        commands.push(sudo + 'yum install -y centos-release-scl-rh epel-release');
+        commands.push(sudo + 'yum install -y devtoolset-9-gcc devtoolset-9-gcc-c++');
+        var packages = 'gcc-c++ make git zlib-devel openssl-devel php gperf cmake3';
         if (target === 'JNI') {
           packages += ' java-11-openjdk-devel';
         }
+        cmake = 'cmake3';
         commands.push(sudo + 'yum install -y ' + packages);
         break;
-      case 'Debian 8':
-      case 'Debian 9':
+      case 'CentOS 8':
+      case 'CentOS Stream 9':
+        commands.push(sudo + 'dnf update -y');
+        if (linux_distro === 'CentOS 8') {
+          commands.push(sudo + 'dnf --enablerepo=powertools install -y gperf');
+        } else {
+          commands.push(sudo + 'dnf --enablerepo=crb install -y gperf');
+        }
+        var packages = 'gcc-c++ make git zlib-devel openssl-devel php cmake';
+        if (target === 'JNI') {
+          packages += ' java-11-openjdk-devel';
+        }
+        commands.push(sudo + 'dnf install -y ' + packages);
+        break;
       case 'Debian 10+':
-      case 'Ubuntu 14':
-      case 'Ubuntu 16':
       case 'Ubuntu 18':
       case 'Ubuntu 20':
       case 'Ubuntu 22':
+      case 'Ubuntu 24':
         if (linux_distro.includes('Debian') && !use_root) {
           commands.push('su -');
         }
-        if (linux_distro === 'Ubuntu 14' && !use_clang) {
-          commands.push(sudo + 'add-apt-repository ppa:ubuntu-toolchain-r/test');
-        }
         commands.push(sudo + 'apt-get update');
         commands.push(sudo + 'apt-get upgrade');
-        var packages = 'make git zlib1g-dev libssl-dev gperf';
-        if (linux_distro === 'Ubuntu 14' || linux_distro === 'Debian 8') {
-          packages += ' php5-cli';
-        } else {
-          packages += ' php-cli';
-        }
-        if (linux_distro === 'Ubuntu 14') {
-          packages += ' cmake3';
-        } else {
-          packages += ' cmake';
-        }
+        var packages = 'make git zlib1g-dev libssl-dev gperf php-cli cmake';
         if (target === 'JNI') {
           packages += ' default-jdk';
         }
         if (use_clang) {
-          packages += ' clang' + getClangVersionSuffix() + ' libc++-dev';
-          if (linux_distro === 'Debian 10+' || linux_distro === 'Ubuntu 18' || linux_distro === 'Ubuntu 20' || linux_distro === 'Ubuntu 22') {
-            packages += ' libc++abi-dev';
+          packages += ' clang' + getClangVersionSuffix() + ' libc++' + getLibcplusplusVersionSuffix() + '-dev';
+          if (linux_distro === 'Debian 10+' || linux_distro === 'Ubuntu 18' || linux_distro === 'Ubuntu 20' || linux_distro === 'Ubuntu 22' || linux_distro === 'Ubuntu 24') {
+            packages += ' libc++abi' + getLibcplusplusVersionSuffix() + '-dev';
           }
         } else {
           packages += ' g++';
-          if (linux_distro === 'Ubuntu 14') {
-            packages += '-4.9';
-          }
         }
         commands.push(sudo + 'apt-get install ' + packages);
         if (linux_distro.includes('Debian') && !use_root) {
@@ -934,7 +936,7 @@ function onOptionsChanged() {
   if (use_vcpkg) {
     commands.push('git clone https://github.com/Microsoft/vcpkg.git');
     commands.push('cd vcpkg');
-    commands.push('git checkout cd5e746ec203c8c3c61647e0886a8df8c1e78e41');
+    commands.push('git checkout bc3512a509f9d29b37346a7e7e929f9a26e66c7e');
     commands.push(local + 'bootstrap-vcpkg.bat');
     if (target === 'C++/CX') {
       commands.push(local + 'vcpkg.exe install gperf:x86-windows openssl:arm-uwp openssl:arm64-uwp openssl:x64-uwp openssl:x86-uwp zlib:arm-uwp zlib:arm64-uwp zlib:x64-uwp zlib:x86-uwp');
@@ -993,6 +995,10 @@ function onOptionsChanged() {
     }
     commands.push('cd ../..');
   } else {
+    if (low_memory) {
+      commands.push(php + ' SplitSource.php');
+    }
+
     commands.push(use_powershell ? 'Remove-Item build -Force -Recurse -ErrorAction SilentlyContinue' : 'rm -rf build');
     commands.push('mkdir build');
     commands.push('cd build');
@@ -1007,7 +1013,10 @@ function onOptionsChanged() {
     if (target === 'JNI') {
       cmake_init_options.push('-DTD_ENABLE_JNI=ON');
     }
-    if (target === 'C++/CX' || target === 'C++/CLI') {
+    if (target === 'C++/CX') {
+      cmake_init_options.push('-DTD_ENABLE_DOTNET=CX');
+    }
+    if (target === 'C++/CLI') {
       cmake_init_options.push('-DTD_ENABLE_DOTNET=ON');
     }
     if (use_lto) {
@@ -1029,8 +1038,6 @@ function onOptionsChanged() {
             options.push('-DCMAKE_OBJDUMP=/usr/bin/llvm-objdump' + clang_version_suffix);
             options.push('-DCMAKE_RANLIB=/usr/bin/llvm-ranlib' + clang_version_suffix);
           }
-        } else if (linux_distro === 'Ubuntu 14') {
-          prefix = 'CC=/usr/bin/gcc-4.9 CXX=/usr/bin/g++-4.9 ';
         } else if (linux_distro === 'CentOS 7') {
           prefix = 'CC=/opt/rh/devtoolset-9/root/usr/bin/gcc CXX=/opt/rh/devtoolset-9/root/usr/bin/g++ ';
         }
@@ -1038,13 +1045,6 @@ function onOptionsChanged() {
       return prefix + cmake + ' ' + options.join(' ') + ' ..';
     }
     commands.push(getCmakeInitCommand(cmake_init_options));
-
-    if (low_memory) {
-      commands.push(cmake + ' --build . --target prepare_cross_compiling');
-      commands.push('cd ..');
-      commands.push(php + ' SplitSource.php');
-      commands.push('cd build');
-    }
 
     let build_command = cmake + ' --build .';
     if (install_dir) {
@@ -1059,9 +1059,6 @@ function onOptionsChanged() {
       }
     } else {
       commands.push(build_command);
-    }
-    if (install_dir && os_linux && linux_distro === 'Debian 8') {
-      commands.push('sed -i "s/LINK_ONLY:td/LINK_ONLY:Td::td/g" ' + install_dir + '/lib/cmake/Td/TdTargets.cmake');
     }
     commands.push('cd ..');
     if (target === 'JNI') {

@@ -1,16 +1,17 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2023
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/telegram/CommonDialogManager.h"
 
-#include "td/telegram/ContactsManager.h"
+#include "td/telegram/ChatManager.h"
 #include "td/telegram/DialogManager.h"
 #include "td/telegram/Global.h"
 #include "td/telegram/Td.h"
 #include "td/telegram/telegram_api.h"
+#include "td/telegram/UserManager.h"
 
 #include "td/utils/algorithm.h"
 #include "td/utils/buffer.h"
@@ -94,18 +95,18 @@ void CommonDialogManager::drop_common_dialogs_cache(UserId user_id) {
 std::pair<int32, vector<DialogId>> CommonDialogManager::get_common_dialogs(UserId user_id, DialogId offset_dialog_id,
                                                                            int32 limit, bool force,
                                                                            Promise<Unit> &&promise) {
-  auto r_input_user = td_->contacts_manager_->get_input_user(user_id);
+  auto r_input_user = td_->user_manager_->get_input_user(user_id);
   if (r_input_user.is_error()) {
     promise.set_error(r_input_user.move_as_error());
     return {};
   }
 
-  if (user_id == td_->contacts_manager_->get_my_id()) {
-    promise.set_error(Status::Error(400, "Can't get common chats with self"));
+  if (user_id == td_->user_manager_->get_my_id()) {
+    promise.set_error(400, "Can't get common chats with self");
     return {};
   }
   if (limit <= 0) {
-    promise.set_error(Status::Error(400, "Parameter limit must be positive"));
+    promise.set_error(400, "Parameter limit must be positive");
     return {};
   }
   if (limit > MAX_GET_DIALOGS) {
@@ -127,7 +128,7 @@ std::pair<int32, vector<DialogId>> CommonDialogManager::get_common_dialogs(UserI
     // fallthrough
     case DialogType::User:
     case DialogType::SecretChat:
-      promise.set_error(Status::Error(400, "Wrong offset_chat_id"));
+      promise.set_error(400, "Wrong offset_chat_id");
       return {};
     default:
       UNREACHABLE();
@@ -146,7 +147,7 @@ std::pair<int32, vector<DialogId>> CommonDialogManager::get_common_dialogs(UserI
       if (offset_dialog_id != DialogId()) {
         offset_it = std::find(common_dialog_ids.begin(), common_dialog_ids.end(), offset_dialog_id);
         if (offset_it == common_dialog_ids.end()) {
-          promise.set_error(Status::Error(400, "Wrong offset_chat_id"));
+          promise.set_error(400, "Wrong offset_chat_id");
           return {};
         }
         ++offset_it;
@@ -178,7 +179,7 @@ std::pair<int32, vector<DialogId>> CommonDialogManager::get_common_dialogs(UserI
 void CommonDialogManager::on_get_common_dialogs(UserId user_id, int64 offset_chat_id,
                                                 vector<tl_object_ptr<telegram_api::Chat>> &&chats, int32 total_count) {
   CHECK(user_id.is_valid());
-  td_->contacts_manager_->on_update_user_common_chat_count(user_id, total_count);
+  td_->user_manager_->on_update_user_common_chat_count(user_id, total_count);
 
   auto &common_dialogs = found_common_dialogs_[user_id];
   if (common_dialogs.is_outdated && offset_chat_id == 0 &&
@@ -196,12 +197,12 @@ void CommonDialogManager::on_get_common_dialogs(UserId user_id, int64 offset_cha
   }
   bool is_last = chats.empty() && offset_chat_id == 0;
   for (auto &chat : chats) {
-    auto dialog_id = ContactsManager::get_dialog_id(chat);
+    auto dialog_id = ChatManager::get_dialog_id(chat);
     if (!dialog_id.is_valid()) {
       LOG(ERROR) << "Receive invalid " << to_string(chat);
       continue;
     }
-    td_->contacts_manager_->on_get_chat(std::move(chat), "on_get_common_dialogs");
+    td_->chat_manager_->on_get_chat(std::move(chat), "on_get_common_dialogs");
 
     if (!td::contains(result, dialog_id)) {
       td_->dialog_manager_->force_create_dialog(dialog_id, "get common dialogs");
@@ -213,7 +214,7 @@ void CommonDialogManager::on_get_common_dialogs(UserId user_id, int64 offset_cha
       LOG(ERROR) << "Fix total count of common groups with " << user_id << " from " << total_count << " to "
                  << result.size();
       total_count = narrow_cast<int32>(result.size());
-      td_->contacts_manager_->on_update_user_common_chat_count(user_id, total_count);
+      td_->user_manager_->on_update_user_common_chat_count(user_id, total_count);
     }
 
     result.emplace_back();

@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -19,6 +19,8 @@ namespace td {
 class Dependencies;
 
 class Td;
+
+class UserManager;
 
 class InputMessageText {
  public:
@@ -50,7 +52,7 @@ class InputMessageText {
 
   telegram_api::object_ptr<telegram_api::InputMedia> get_input_media_web_page() const;
 
-  td_api::object_ptr<td_api::inputMessageText> get_input_message_text_object() const;
+  td_api::object_ptr<td_api::inputMessageText> get_input_message_text_object(const UserManager *user_manager) const;
 };
 
 bool operator==(const InputMessageText &lhs, const InputMessageText &rhs);

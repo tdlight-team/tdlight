@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -23,7 +23,7 @@ int TD_TL_writer::get_max_arity() const {
 bool TD_TL_writer::is_built_in_simple_type(const std::string &name) const {
   return name == "True" || name == "Bool" || name == "Int" || name == "Long" || name == "Double" || name == "String" ||
          name == "Int32" || name == "Int53" || name == "Int64" || name == "Int128" || name == "Int256" ||
-         name == "Bytes";
+         name == "Int512" || name == "Bytes" || name == "SecureString" || name == "SecureBytes";
 }
 
 bool TD_TL_writer::is_built_in_complex_type(const std::string &name) const {
@@ -64,7 +64,8 @@ bool TD_TL_writer::is_full_constructor_generated(const tl::tl_combinator *t, boo
          t->name == "langPackString" || t->name == "langPackStringPluralized" || t->name == "langPackStringDeleted" ||
          t->name == "peerUser" || t->name == "peerChat" || t->name == "updateServiceNotification" ||
          t->name == "updateNewMessage" || t->name == "updateChannelTooLong" || t->name == "messages.stickerSet" ||
-         t->name == "updates.differenceSlice";
+         t->name == "updates.differenceSlice" || t->name == "contacts.contactBirthdays" ||
+         t->name == "statsGraphError" || t->name == "recentStory";
 }
 
 int TD_TL_writer::get_storer_type(const tl::tl_combinator *t, const std::string &storer_name) const {
@@ -101,7 +102,7 @@ std::vector<std::string> TD_TL_writer::get_parsers() const {
   std::vector<std::string> parsers;
   if (tl_name == "telegram_api") {
     parsers.push_back("TlBufferParser");
-  } else if (tl_name == "mtproto_api" || tl_name == "secret_api") {
+  } else if (tl_name == "mtproto_api" || tl_name == "secret_api" || tl_name == "e2e_api") {
     parsers.push_back("TlParser");
   }
   return parsers;
@@ -109,7 +110,7 @@ std::vector<std::string> TD_TL_writer::get_parsers() const {
 
 std::vector<std::string> TD_TL_writer::get_storers() const {
   std::vector<std::string> storers;
-  if (tl_name == "telegram_api" || tl_name == "mtproto_api" || tl_name == "secret_api") {
+  if (tl_name == "telegram_api" || tl_name == "mtproto_api" || tl_name == "secret_api" || tl_name == "e2e_api") {
     storers.push_back("TlStorerCalcLength");
     storers.push_back("TlStorerUnsafe");
   }
@@ -216,8 +217,17 @@ std::string TD_TL_writer::gen_type_name(const tl::tl_tree_type *tree_type) const
   if (name == "Int256") {
     return "UInt256";
   }
+  if (name == "Int512") {
+    return "UInt512";
+  }
   if (name == "Bytes") {
     return "bytes";
+  }
+  if (name == "SecureString") {
+    return "secure_string";
+  }
+  if (name == "SecureBytes") {
+    return "secure_bytes";
   }
 
   if (name == "Vector") {
@@ -271,10 +281,11 @@ std::string TD_TL_writer::gen_constructor_parameter(int field_num, const std::st
   if (field_type == "bool " || field_type == "int32 " || field_type == "int53 " || field_type == "int64 " ||
       field_type == "double ") {
     res += field_type;
-  } else if (field_type == "UInt128 " || field_type == "UInt256 " || field_type == "string " ||
-             (string_type == bytes_type && field_type == "bytes ")) {
+  } else if (field_type == "UInt128 " || field_type == "UInt256 " || field_type == "UInt512 " ||
+             field_type == "string " || (string_type == bytes_type && field_type == "bytes ") ||
+             field_type == "secure_string " || (string_type == bytes_type && field_type == "secure_bytes ")) {
     res += field_type + "const &";
-  } else if (field_type.compare(0, 5, "array") == 0 || field_type == "bytes " ||
+  } else if (field_type.compare(0, 5, "array") == 0 || field_type == "bytes " || field_type == "secure_bytes " ||
              field_type.compare(0, 10, "object_ptr") == 0) {
     res += field_type + "&&";
   } else {

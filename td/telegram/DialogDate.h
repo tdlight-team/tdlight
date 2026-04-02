@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -11,7 +11,6 @@
 #include "td/telegram/ServerMessageId.h"
 
 #include "td/utils/common.h"
-#include "td/utils/HashTableUtils.h"
 #include "td/utils/StringBuilder.h"
 
 #include <limits>
@@ -45,26 +44,29 @@ class DialogDate {
   int64 get_order() const {
     return order;
   }
+
   DialogId get_dialog_id() const {
     return dialog_id;
   }
+
   int32 get_date() const {
     return static_cast<int32>((order >> 32) & 0x7FFFFFFF);
   }
+
   MessageId get_message_id() const {
     return MessageId(ServerMessageId(static_cast<int32>(order & 0x7FFFFFFF)));
+  }
+
+  static int64 get_dialog_order(MessageId message_id, int32 message_date) {
+    CHECK(!message_id.is_scheduled());
+    return (static_cast<int64>(message_date) << 32) +
+           message_id.get_prev_server_message_id().get_server_message_id().get();
   }
 };
 
 const DialogDate MIN_DIALOG_DATE(std::numeric_limits<int64>::max(), DialogId());
 const DialogDate MAX_DIALOG_DATE(0, DialogId());
 const int64 DEFAULT_ORDER = -1;
-
-struct DialogDateHash {
-  uint32 operator()(const DialogDate &dialog_date) const {
-    return combine_hashes(Hash<int64>()(dialog_date.get_order()), DialogIdHash()(dialog_date.get_dialog_id()));
-  }
-};
 
 inline StringBuilder &operator<<(StringBuilder &string_builder, DialogDate dialog_date) {
   return string_builder << "[" << dialog_date.get_order() << ", " << dialog_date.get_dialog_id().get() << "]";

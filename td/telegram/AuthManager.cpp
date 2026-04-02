@@ -1,16 +1,17 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/telegram/AuthManager.h"
 
+#include "td/telegram/Application.h"
 #include "td/telegram/AttachMenuManager.h"
 #include "td/telegram/AuthManager.hpp"
 #include "td/telegram/ConfigManager.h"
-#include "td/telegram/ContactsManager.h"
 #include "td/telegram/DialogFilterManager.h"
+#include "td/telegram/DialogId.h"
 #include "td/telegram/Global.h"
 #include "td/telegram/logevent/LogEvent.h"
 #include "td/telegram/logevent/LogEventHelper.h"
@@ -20,8 +21,11 @@
 #include "td/telegram/net/NetQueryDispatcher.h"
 #include "td/telegram/NewPasswordState.h"
 #include "td/telegram/NotificationManager.h"
+#include "td/telegram/NotificationSettingsManager.h"
+#include "td/telegram/OnlineManager.h"
 #include "td/telegram/OptionManager.h"
 #include "td/telegram/PasswordManager.h"
+#include "td/telegram/PromoDataManager.h"
 #include "td/telegram/ReactionManager.h"
 #include "td/telegram/SendCodeHelper.hpp"
 #include "td/telegram/StateManager.h"
@@ -29,13 +33,18 @@
 #include "td/telegram/Td.h"
 #include "td/telegram/TdDb.h"
 #include "td/telegram/telegram_api.h"
+#include "td/telegram/TermsOfService.hpp"
+#include "td/telegram/TermsOfServiceManager.h"
 #include "td/telegram/ThemeManager.h"
 #include "td/telegram/TopDialogManager.h"
 #include "td/telegram/UpdatesManager.h"
+#include "td/telegram/UserManager.h"
 #include "td/telegram/Version.h"
 
 #include "td/utils/base64.h"
+#include "td/utils/buffer.h"
 #include "td/utils/format.h"
+#include "td/utils/JsonBuilder.h"
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
 #include "td/utils/Promise.h"
@@ -44,6 +53,8 @@
 #include "td/utils/Time.h"
 #include "td/utils/tl_helpers.h"
 
+#include <type_traits>
+
 namespace td {
 
 struct AuthManager::DbState {
@@ -51,6 +62,11 @@ struct AuthManager::DbState {
   int32 api_id_;
   string api_hash_;
   double expires_at_;
+
+  // WaitPremiumPurchase
+  string store_product_id_;
+  string support_email_address_;
+  string support_email_subject_;
 
   // WaitEmailAddress and WaitEmailCode
   bool allow_apple_id_ = false;
@@ -62,7 +78,7 @@ struct AuthManager::DbState {
   int32 reset_available_period_ = -1;
   int32 reset_pending_date_ = -1;
 
-  // WaitEmailAddress, WaitEmailCode, WaitCode and WaitRegistration
+  // WaitPremiumPurchase, WaitEmailAddress, WaitEmailCode, WaitCode and WaitRegistration
   SendCodeHelper send_code_helper_;
 
   // WaitQrCodeConfirmation
@@ -77,6 +93,17 @@ struct AuthManager::DbState {
   TermsOfService terms_of_service_;
 
   DbState() = default;
+
+  static DbState wait_premium_purchase(int32 api_id, string api_hash, string store_product_id,
+                                       string support_email_address, string support_email_subject,
+                                       SendCodeHelper send_code_helper) {
+    DbState state(State::WaitPremiumPurchase, api_id, std::move(api_hash));
+    state.send_code_helper_ = std::move(send_code_helper);
+    state.store_product_id_ = std::move(store_product_id);
+    state.support_email_address_ = std::move(support_email_address);
+    state.support_email_subject_ = std::move(support_email_subject);
+    return state;
+  }
 
   static DbState wait_email_address(int32 api_id, string api_hash, bool allow_apple_id, bool allow_google_id,
                                     SendCodeHelper send_code_helper) {
@@ -141,6 +168,7 @@ struct AuthManager::DbState {
     auto state_timeout = [state] {
       switch (state) {
         case State::WaitPassword:
+        case State::WaitPremiumPurchase:
         case State::WaitRegistration:
           return 86400;
         case State::WaitEmailAddress:
@@ -168,6 +196,8 @@ void AuthManager::DbState::store(StorerT &storer) const {
   bool is_wait_qr_code_confirmation_supported = true;
   bool is_time_store_supported = true;
   bool is_reset_email_address_supported = true;
+  bool is_wait_premium_purchase_supported = true;
+  bool is_wait_premium_purchase_support_supported = true;
   BEGIN_STORE_FLAGS();
   STORE_FLAG(has_terms_of_service);
   STORE_FLAG(is_pbkdf2_supported);
@@ -179,6 +209,8 @@ void AuthManager::DbState::store(StorerT &storer) const {
   STORE_FLAG(allow_google_id_);
   STORE_FLAG(is_time_store_supported);
   STORE_FLAG(is_reset_email_address_supported);
+  STORE_FLAG(is_wait_premium_purchase_supported);
+  STORE_FLAG(is_wait_premium_purchase_support_supported);
   END_STORE_FLAGS();
   store(state_, storer);
   store(api_id_, storer);
@@ -189,7 +221,12 @@ void AuthManager::DbState::store(StorerT &storer) const {
     store(terms_of_service_, storer);
   }
 
-  if (state_ == State::WaitEmailAddress) {
+  if (state_ == State::WaitPremiumPurchase) {
+    store(send_code_helper_, storer);
+    store(store_product_id_, storer);
+    store(support_email_address_, storer);
+    store(support_email_subject_, storer);
+  } else if (state_ == State::WaitEmailAddress) {
     store(send_code_helper_, storer);
   } else if (state_ == State::WaitEmailCode) {
     store(send_code_helper_, storer);
@@ -223,6 +260,8 @@ void AuthManager::DbState::parse(ParserT &parser) {
   bool is_wait_qr_code_confirmation_supported = false;
   bool is_time_store_supported = false;
   bool is_reset_email_address_supported = false;
+  bool is_wait_premium_purchase_supported = false;
+  bool is_wait_premium_purchase_support_supported = false;
   if (parser.version() >= static_cast<int32>(Version::AddTermsOfService)) {
     BEGIN_PARSE_FLAGS();
     PARSE_FLAG(has_terms_of_service);
@@ -235,10 +274,12 @@ void AuthManager::DbState::parse(ParserT &parser) {
     PARSE_FLAG(allow_google_id_);
     PARSE_FLAG(is_time_store_supported);
     PARSE_FLAG(is_reset_email_address_supported);
+    PARSE_FLAG(is_wait_premium_purchase_supported);
+    PARSE_FLAG(is_wait_premium_purchase_support_supported);
     END_PARSE_FLAGS();
   }
-  if (!is_reset_email_address_supported) {
-    return parser.set_error("Have no reset email address support");
+  if (!is_wait_premium_purchase_support_supported) {
+    return parser.set_error("Have no premium subscription purchase support");
   }
   CHECK(is_pbkdf2_supported);
   CHECK(is_srp_supported);
@@ -246,6 +287,8 @@ void AuthManager::DbState::parse(ParserT &parser) {
   CHECK(is_wait_registration_stores_phone_number);
   CHECK(is_wait_qr_code_confirmation_supported);
   CHECK(is_time_store_supported);
+  CHECK(is_reset_email_address_supported);
+  CHECK(is_wait_premium_purchase_supported);
 
   parse(state_, parser);
   parse(api_id_, parser);
@@ -256,7 +299,12 @@ void AuthManager::DbState::parse(ParserT &parser) {
     parse(terms_of_service_, parser);
   }
 
-  if (state_ == State::WaitEmailAddress) {
+  if (state_ == State::WaitPremiumPurchase) {
+    parse(send_code_helper_, parser);
+    parse(store_product_id_, parser);
+    parse(support_email_address_, parser);
+    parse(support_email_subject_, parser);
+  } else if (state_ == State::WaitEmailAddress) {
     parse(send_code_helper_, parser);
   } else if (state_ == State::WaitEmailCode) {
     parse(send_code_helper_, parser);
@@ -287,7 +335,7 @@ AuthManager::AuthManager(int32 api_id, const string &api_hash, ActorShared<> par
     if (is_bot_str == "true") {
       is_bot_ = true;
     }
-    auto my_id = ContactsManager::load_my_id();
+    auto my_id = UserManager::load_my_id();
     if (my_id.is_valid()) {
       // just in case
       LOG(INFO) << "Logged in as " << my_id;
@@ -295,8 +343,8 @@ AuthManager::AuthManager(int32 api_id, const string &api_hash, ActorShared<> par
       update_state(State::Ok);
     } else {
       LOG(ERROR) << "Restore unknown my_id";
-      ContactsManager::send_get_me_query(
-          td_, PromiseCreator::lambda([this](Result<Unit> result) { update_state(State::Ok); }));
+      UserManager::send_get_me_query(td_,
+                                     PromiseCreator::lambda([this](Result<Unit> result) { update_state(State::Ok); }));
     }
     G()->net_query_dispatcher().check_authorization_is_ok();
   } else if (auth_str == "logout") {
@@ -342,6 +390,9 @@ tl_object_ptr<td_api::AuthorizationState> AuthManager::get_authorization_state_o
   switch (authorization_state) {
     case State::WaitPhoneNumber:
       return make_tl_object<td_api::authorizationStateWaitPhoneNumber>();
+    case State::WaitPremiumPurchase:
+      return make_tl_object<td_api::authorizationStateWaitPremiumPurchase>(store_product_id_, support_email_address_,
+                                                                           support_email_subject_);
     case State::WaitEmailAddress:
       return make_tl_object<td_api::authorizationStateWaitEmailAddress>(allow_apple_id_, allow_google_id_);
     case State::WaitEmailCode: {
@@ -406,12 +457,12 @@ void AuthManager::check_bot_token(uint64 query_id, string bot_token) {
   if (state_ != State::WaitPhoneNumber) {
     return on_query_error(query_id, Status::Error(400, "Call to checkAuthenticationBotToken unexpected"));
   }
-  if (!send_code_helper_.phone_number().empty() || was_qr_code_request_) {
+  if (!send_code_helper_.get_phone_number().empty() || was_qr_code_request_ || was_passkey_login_request_) {
     return on_query_error(
-        query_id, Status::Error(400, "Cannot set bot token after authentication began. You need to log out first"));
+        query_id, Status::Error(400, "Cannot set bot token after authentication began. You must log out first"));
   }
   if (was_check_bot_token_ && bot_token_ != bot_token) {
-    return on_query_error(query_id, Status::Error(400, "Cannot change bot token. You need to log out first"));
+    return on_query_error(query_id, Status::Error(400, "Cannot change bot token. You must log out first"));
   }
 
   on_new_query(query_id);
@@ -424,8 +475,8 @@ void AuthManager::check_bot_token(uint64 query_id, string bot_token) {
 
 void AuthManager::request_qr_code_authentication(uint64 query_id, vector<UserId> other_user_ids) {
   if (state_ != State::WaitPhoneNumber) {
-    if ((state_ == State::WaitEmailAddress || state_ == State::WaitEmailCode || state_ == State::WaitCode ||
-         state_ == State::WaitPassword || state_ == State::WaitRegistration) &&
+    if ((state_ == State::WaitPremiumPurchase || state_ == State::WaitEmailAddress || state_ == State::WaitEmailCode ||
+         state_ == State::WaitCode || state_ == State::WaitPassword || state_ == State::WaitRegistration) &&
         net_query_id_ == 0) {
       // ok
     } else {
@@ -436,7 +487,7 @@ void AuthManager::request_qr_code_authentication(uint64 query_id, vector<UserId>
     return on_query_error(
         query_id,
         Status::Error(400,
-                      "Cannot request QR code authentication after bot token was entered. You need to log out first"));
+                      "Cannot request QR code authentication after bot token was entered. You must log out first"));
   }
   for (auto &other_user_id : other_user_ids) {
     if (!other_user_id.is_valid()) {
@@ -447,6 +498,7 @@ void AuthManager::request_qr_code_authentication(uint64 query_id, vector<UserId>
   other_user_ids_ = std::move(other_user_ids);
   send_code_helper_ = SendCodeHelper();
   terms_of_service_ = TermsOfService();
+  passkey_parameters_ = {};
   was_qr_code_request_ = true;
 
   on_new_query(query_id);
@@ -487,11 +539,73 @@ void AuthManager::on_update_login_token() {
   send_export_login_token_query();
 }
 
+void AuthManager::on_init_passkey_login(int32 dc_id, uint64 main_auth_key_id) {
+  passkey_dc_id_ = dc_id;
+  passkey_auth_key_id_ = static_cast<int64>(main_auth_key_id);
+}
+
+void AuthManager::finish_passkey_login(uint64 query_id, const string &passkey_id, const string &client_data,
+                                       const string &authenticator_data, const string &signature,
+                                       const string &user_handle) {
+  if (state_ != State::WaitPhoneNumber && state_ != State::WaitQrCodeConfirmation) {
+    if ((state_ == State::WaitPremiumPurchase || state_ == State::WaitEmailAddress || state_ == State::WaitEmailCode ||
+         state_ == State::WaitCode || state_ == State::WaitPassword || state_ == State::WaitRegistration) &&
+        net_query_id_ == 0) {
+      // ok
+    } else {
+      return on_query_error(query_id, Status::Error(400, "Call to checkAuthenticationPasskey unexpected"));
+    }
+  }
+  if (was_check_bot_token_) {
+    return on_query_error(
+        query_id,
+        Status::Error(400,
+                      "Cannot request passkey authentication after bot token was entered. You must log out first"));
+  }
+
+  other_user_ids_ = {};
+  send_code_helper_ = SendCodeHelper();
+  terms_of_service_ = TermsOfService();
+  passkey_parameters_ = PasskeyParameters(passkey_id, client_data, authenticator_data, signature, user_handle);
+  was_passkey_login_request_ = true;
+
+  on_new_query(query_id);
+
+  send_finish_passkey_login_query();
+}
+
+void AuthManager::send_finish_passkey_login_query() {
+  int32 flags = 0;
+  if (passkey_dc_id_ != 0) {
+    flags |= telegram_api::auth_finishPasskeyLogin::FROM_DC_ID_MASK;
+  }
+  auto credential = telegram_api::make_object<telegram_api::inputPasskeyCredentialPublicKey>(
+      passkey_parameters_.passkey_id_, passkey_parameters_.passkey_id_,
+      telegram_api::make_object<telegram_api::inputPasskeyResponseLogin>(
+          telegram_api::make_object<telegram_api::dataJSON>(passkey_parameters_.client_data_),
+          BufferSlice(passkey_parameters_.authenticator_data_), BufferSlice(passkey_parameters_.signature_),
+          passkey_parameters_.user_handle_));
+  start_net_query(NetQueryType::FinishPasskeyLogin,
+                  G()->net_query_creator().create_unauth(telegram_api::auth_finishPasskeyLogin(
+                      flags, std::move(credential), passkey_dc_id_, passkey_auth_key_id_)));
+}
+
+void AuthManager::on_update_sent_code(telegram_api::object_ptr<telegram_api::auth_SentCode> &&sent_code_ptr) {
+  if (G()->close_flag()) {
+    return;
+  }
+  if (state_ != State::WaitPremiumPurchase) {
+    return;
+  }
+
+  on_sent_code(std::move(sent_code_ptr));
+}
+
 void AuthManager::set_phone_number(uint64 query_id, string phone_number,
                                    td_api::object_ptr<td_api::phoneNumberAuthenticationSettings> settings) {
   if (state_ != State::WaitPhoneNumber) {
-    if ((state_ == State::WaitEmailAddress || state_ == State::WaitEmailCode || state_ == State::WaitCode ||
-         state_ == State::WaitPassword || state_ == State::WaitRegistration) &&
+    if ((state_ == State::WaitPremiumPurchase || state_ == State::WaitEmailAddress || state_ == State::WaitEmailCode ||
+         state_ == State::WaitCode || state_ == State::WaitPassword || state_ == State::WaitRegistration) &&
         net_query_id_ == 0) {
       // ok
     } else {
@@ -500,7 +614,7 @@ void AuthManager::set_phone_number(uint64 query_id, string phone_number,
   }
   if (was_check_bot_token_) {
     return on_query_error(
-        query_id, Status::Error(400, "Cannot set phone number after bot token was entered. You need to log out first"));
+        query_id, Status::Error(400, "Cannot set phone number after bot token was entered. You must log out first"));
   }
   if (phone_number.empty()) {
     return on_query_error(query_id, Status::Error(400, "Phone number must be non-empty"));
@@ -508,7 +622,11 @@ void AuthManager::set_phone_number(uint64 query_id, string phone_number,
 
   other_user_ids_.clear();
   was_qr_code_request_ = false;
+  was_passkey_login_request_ = false;
 
+  store_product_id_.clear();
+  support_email_address_.clear();
+  support_email_subject_.clear();
   allow_apple_id_ = false;
   allow_google_id_ = false;
   email_address_ = {};
@@ -518,15 +636,72 @@ void AuthManager::set_phone_number(uint64 query_id, string phone_number,
   code_ = string();
   email_code_ = {};
 
-  if (send_code_helper_.phone_number() != phone_number) {
+  if (send_code_helper_.get_phone_number() != phone_number) {
     send_code_helper_ = SendCodeHelper();
     terms_of_service_ = TermsOfService();
+    passkey_parameters_ = {};
   }
 
   on_new_query(query_id);
 
   start_net_query(NetQueryType::SendCode, G()->net_query_creator().create_unauth(send_code_helper_.send_code(
                                               std::move(phone_number), settings, api_id_, api_hash_)));
+}
+
+void AuthManager::check_premium_purchase(uint64 query_id, string currency, int64 amount) {
+  if (state_ != State::WaitPremiumPurchase) {
+    return on_query_error(query_id, Status::Error(400, "Call to checkAuthenticationPremiumPurchase unexpected"));
+  }
+  on_new_query(query_id);
+
+  auto purpose = telegram_api::make_object<telegram_api::inputStorePaymentAuthCode>(
+      0, false, send_code_helper_.get_phone_number(), send_code_helper_.get_phone_code_hash(), currency, amount);
+  start_net_query(NetQueryType::CheckPremiumPurchase,
+                  G()->net_query_creator().create_unauth(telegram_api::payments_canPurchaseStore(std::move(purpose))));
+}
+
+void AuthManager::set_premium_purchase_transaction(uint64 query_id,
+                                                   td_api::object_ptr<td_api::StoreTransaction> &&transaction,
+                                                   bool is_restore, string currency, int64 amount) {
+  if (state_ != State::WaitPremiumPurchase) {
+    return on_query_error(query_id, Status::Error(400, "Call to checkAuthenticationPremiumPurchase unexpected"));
+  }
+  if (transaction == nullptr) {
+    return on_query_error(query_id, Status::Error(400, "Transaction must be non-empty"));
+  }
+  auto purpose = telegram_api::make_object<telegram_api::inputStorePaymentAuthCode>(
+      0, is_restore, send_code_helper_.get_phone_number(), send_code_helper_.get_phone_code_hash(), currency, amount);
+  switch (transaction->get_id()) {
+    case td_api::storeTransactionAppStore::ID: {
+      auto type = td_api::move_object_as<td_api::storeTransactionAppStore>(transaction);
+      on_new_query(query_id);
+      start_net_query(NetQueryType::SetPremiumPurchaseTransaction,
+                      G()->net_query_creator().create_unauth(telegram_api::payments_assignAppStoreTransaction(
+                          BufferSlice(type->receipt_), std::move(purpose))));
+      break;
+    }
+    case td_api::storeTransactionGooglePlay::ID: {
+      auto type = td_api::move_object_as<td_api::storeTransactionGooglePlay>(transaction);
+      if (!clean_input_string(type->package_name_) || !clean_input_string(type->store_product_id_) ||
+          !clean_input_string(type->purchase_token_)) {
+        return on_query_error(query_id, Status::Error(400, "Strings must be encoded in UTF-8"));
+      }
+      auto receipt = telegram_api::make_object<telegram_api::dataJSON>(string());
+      receipt->data_ = json_encode<string>(json_object([&](auto &o) {
+        o("packageName", type->package_name_);
+        o("purchaseToken", type->purchase_token_);
+        o("productId", type->store_product_id_);
+      }));
+
+      on_new_query(query_id);
+      start_net_query(NetQueryType::SetPremiumPurchaseTransaction,
+                      G()->net_query_creator().create_unauth(
+                          telegram_api::payments_assignPlayMarketTransaction(std::move(receipt), std::move(purpose))));
+      break;
+    }
+    default:
+      UNREACHABLE();
+  }
 }
 
 void AuthManager::set_firebase_token(uint64 query_id, string token) {
@@ -537,6 +712,15 @@ void AuthManager::set_firebase_token(uint64 query_id, string token) {
 
   start_net_query(NetQueryType::RequestFirebaseSms,
                   G()->net_query_creator().create_unauth(send_code_helper_.request_firebase_sms(token)));
+}
+
+void AuthManager::report_missing_code(uint64 query_id, string mobile_network_code) {
+  if (state_ != State::WaitCode) {
+    return on_query_error(query_id, Status::Error(400, "Call to reportAuthenticationCodeMissing unexpected"));
+  }
+  G()->net_query_dispatcher().dispatch_with_callback(
+      G()->net_query_creator().create_unauth(send_code_helper_.report_missing_code(mobile_network_code)),
+      actor_shared(this));
 }
 
 void AuthManager::set_email_address(uint64 query_id, string email_address) {
@@ -559,7 +743,7 @@ void AuthManager::set_email_address(uint64 query_id, string email_address) {
                   G()->net_query_creator().create_unauth(send_code_helper_.send_verify_email_code(email_address_)));
 }
 
-void AuthManager::resend_authentication_code(uint64 query_id) {
+void AuthManager::resend_authentication_code(uint64 query_id, td_api::object_ptr<td_api::ResendCodeReason> &&reason) {
   if (state_ != State::WaitCode) {
     if (state_ == State::WaitEmailCode) {
       on_new_query(query_id);
@@ -571,7 +755,7 @@ void AuthManager::resend_authentication_code(uint64 query_id) {
     return on_query_error(query_id, Status::Error(400, "Call to resendAuthenticationCode unexpected"));
   }
 
-  auto r_resend_code = send_code_helper_.resend_code();
+  auto r_resend_code = send_code_helper_.resend_code(std::move(reason));
   if (r_resend_code.is_error()) {
     return on_query_error(query_id, r_resend_code.move_as_error());
   }
@@ -587,7 +771,7 @@ void AuthManager::send_auth_sign_in_query() {
       is_email ? telegram_api::auth_signIn::EMAIL_VERIFICATION_MASK : telegram_api::auth_signIn::PHONE_CODE_MASK;
   start_net_query(NetQueryType::SignIn,
                   G()->net_query_creator().create_unauth(telegram_api::auth_signIn(
-                      flags, send_code_helper_.phone_number().str(), send_code_helper_.phone_code_hash().str(), code_,
+                      flags, send_code_helper_.get_phone_number(), send_code_helper_.get_phone_code_hash(), code_,
                       is_email ? email_code_.get_input_email_verification() : nullptr)));
 }
 
@@ -621,7 +805,7 @@ void AuthManager::reset_email_address(uint64 query_id) {
   on_new_query(query_id);
   start_net_query(NetQueryType::ResetEmailAddress,
                   G()->net_query_creator().create_unauth(telegram_api::auth_resetLoginEmail(
-                      send_code_helper_.phone_number().str(), send_code_helper_.phone_code_hash().str())));
+                      send_code_helper_.get_phone_number(), send_code_helper_.get_phone_code_hash())));
 }
 
 void AuthManager::check_code(uint64 query_id, string code) {
@@ -648,13 +832,9 @@ void AuthManager::register_user(uint64 query_id, string first_name, string last_
   }
 
   last_name = clean_name(last_name, MAX_NAME_LENGTH);
-  int32 flags = 0;
-  if (disable_notification) {
-    flags |= telegram_api::auth_signUp::NO_JOINED_NOTIFICATIONS_MASK;
-  }
   start_net_query(NetQueryType::SignUp, G()->net_query_creator().create_unauth(telegram_api::auth_signUp(
-                                            flags, false /*ignored*/, send_code_helper_.phone_number().str(),
-                                            send_code_helper_.phone_code_hash().str(), first_name, last_name)));
+                                            0, disable_notification, send_code_helper_.get_phone_number(),
+                                            send_code_helper_.get_phone_code_hash(), first_name, last_name)));
 }
 
 void AuthManager::check_password(uint64 query_id, string password) {
@@ -739,7 +919,7 @@ void AuthManager::send_log_out_query() {
   // we can lose authorization while logging out, but still may need to resend the request,
   // so we pretend that it doesn't require authorization
   auto query = G()->net_query_creator().create_unauth(telegram_api::auth_logOut());
-  query->set_priority(1);
+  query->make_high_priority();
   start_net_query(NetQueryType::LogOut, std::move(query));
 }
 
@@ -836,6 +1016,16 @@ void AuthManager::on_sent_code(telegram_api::object_ptr<telegram_api::auth_SentC
   LOG(INFO) << "Receive " << to_string(sent_code_ptr);
   auto sent_code_id = sent_code_ptr->get_id();
   if (sent_code_id != telegram_api::auth_sentCode::ID) {
+    if (sent_code_id == telegram_api::auth_sentCodePaymentRequired::ID) {
+      auto sent_code = telegram_api::move_object_as<telegram_api::auth_sentCodePaymentRequired>(sent_code_ptr);
+      send_code_helper_.on_phone_code_hash(std::move(sent_code->phone_code_hash_));
+      store_product_id_ = std::move(sent_code->store_product_);
+      support_email_address_ = std::move(sent_code->support_email_address_);
+      support_email_subject_ = std::move(sent_code->support_email_subject_);
+      update_state(State::WaitPremiumPurchase);
+      on_current_query_ok();
+      return;
+    }
     CHECK(sent_code_id == telegram_api::auth_sentCodeSuccess::ID);
     auto sent_code_success = move_tl_object_as<telegram_api::auth_sentCodeSuccess>(sent_code_ptr);
     return on_get_authorization(std::move(sent_code_success->authorization_));
@@ -861,8 +1051,8 @@ void AuthManager::on_sent_code(telegram_api::object_ptr<telegram_api::auth_SentC
     reset_pending_date_ = -1;
     if (code_type->reset_pending_date_ > 0) {
       reset_pending_date_ = code_type->reset_pending_date_;
-    } else if ((code_type->flags_ & telegram_api::auth_sentCodeTypeEmailCode::RESET_AVAILABLE_PERIOD_MASK) != 0) {
-      reset_available_period_ = max(code_type->reset_available_period_, 0);
+    } else if (code_type->reset_available_period_ > 0) {
+      reset_available_period_ = code_type->reset_available_period_;
     }
     if (email_code_info_.is_empty()) {
       email_code_info_ = SentEmailCode("<unknown>", code_type->length_);
@@ -882,6 +1072,33 @@ void AuthManager::on_send_code_result(NetQueryPtr &&net_query) {
     return on_current_query_error(r_sent_code.move_as_error());
   }
   on_sent_code(r_sent_code.move_as_ok());
+}
+
+void AuthManager::on_set_premium_purchase_transaction_result(NetQueryPtr &&net_query) {
+  static_assert(std::is_same<telegram_api::payments_assignAppStoreTransaction::ReturnType,
+                             telegram_api::payments_assignPlayMarketTransaction::ReturnType>::value,
+                "");
+  auto result = fetch_result<telegram_api::payments_assignPlayMarketTransaction>(std::move(net_query));
+  if (result.is_error()) {
+    return on_current_query_error(result.move_as_error());
+  }
+
+  td_->updates_manager_->on_get_updates(result.move_as_ok(), Promise<Unit>());
+  if (query_id_ != 0) {
+    return on_current_query_error(Status::Error(500, "Failed to get sent code"));
+  }
+}
+
+void AuthManager::on_check_premium_purchase_result(NetQueryPtr &&net_query) {
+  auto result = fetch_result<telegram_api::payments_canPurchaseStore>(std::move(net_query));
+  if (result.is_error()) {
+    return on_current_query_error(result.move_as_error());
+  }
+  if (!result.ok()) {
+    return on_current_query_error(Status::Error(400, "Premium can't be purchased"));
+  }
+
+  on_current_query_ok();
 }
 
 void AuthManager::on_send_email_code_result(NetQueryPtr &&net_query) {
@@ -999,6 +1216,14 @@ void AuthManager::on_get_login_token(tl_object_ptr<telegram_api::auth_LoginToken
     default:
       UNREACHABLE();
   }
+}
+
+void AuthManager::on_finish_passkey_login_result(NetQueryPtr &&net_query) {
+  auto r_authorization = fetch_result<telegram_api::auth_finishPasskeyLogin>(std::move(net_query));
+  if (r_authorization.is_error()) {
+    return on_current_query_error(r_authorization.move_as_error());
+  }
+  on_get_authorization(r_authorization.move_as_ok());
 }
 
 void AuthManager::on_get_password_result(NetQueryPtr &&net_query) {
@@ -1127,7 +1352,7 @@ void AuthManager::on_log_out_result(NetQueryPtr &&net_query) {
   auto r_log_out = fetch_result<telegram_api::auth_logOut>(std::move(net_query));
   if (r_log_out.is_ok()) {
     auto logged_out = r_log_out.move_as_ok();
-    if (!logged_out->future_auth_token_.empty()) {
+    if (!logged_out->future_auth_token_.empty() && !is_bot()) {
       td_->option_manager_->set_option_string("authentication_token",
                                               base64url_encode(logged_out->future_auth_token_.as_slice()));
     }
@@ -1143,7 +1368,7 @@ void AuthManager::on_account_banned() const {
     return;
   }
   LOG(ERROR) << "Your account was banned for suspicious activity. If you think that this is a mistake, please try to "
-                "log in from an official mobile app and send a email to recover the account by following instructions "
+                "log in from an official mobile app and send an email to recover the account by following instructions "
                 "provided by the app";
 }
 
@@ -1211,6 +1436,7 @@ void AuthManager::on_get_authorization(tl_object_ptr<telegram_api::auth_Authoriz
     return on_current_query_ok();
   }
   auto auth = telegram_api::move_object_as<telegram_api::auth_authorization>(auth_ptr);
+  string debug = oneline(to_string(auth));
 
   td_->option_manager_->set_option_integer("authorization_date", G()->unix_time());
   if (was_check_bot_token_) {
@@ -1226,17 +1452,18 @@ void AuthManager::on_get_authorization(tl_object_ptr<telegram_api::auth_Authoriz
   state_ = State::Ok;
   if (auth->user_->get_id() == telegram_api::user::ID) {
     auto *user = static_cast<telegram_api::user *>(auth->user_.get());
-    int32 mask = 1 << 10;
-    if ((user->flags_ & mask) == 0) {
+    if (!user->self_) {
       LOG(ERROR) << "Receive invalid authorization for " << to_string(auth->user_);
-      user->flags_ |= mask;
       user->self_ = true;
     }
   }
-  td_->contacts_manager_->on_get_user(std::move(auth->user_), "on_get_authorization");
+  td_->user_manager_->on_get_user(std::move(auth->user_), "on_get_authorization");
   update_state(State::Ok);
-  if (!td_->contacts_manager_->get_my_id().is_valid()) {
-    LOG(ERROR) << "Server didsn't send proper authorization";
+  td_->messages_manager_->on_authorization_success();
+  if (!td_->user_manager_->get_my_id().is_valid()) {
+    LOG(ERROR) << "Server didsn't send proper authorization: " << debug;
+    save_app_log(td_, "tdlib.auth", DialogId(static_cast<int64>(1)),
+                 telegram_api::make_object<telegram_api::jsonString>(debug), Promise<Unit>());
     on_current_query_error(Status::Error(500, "Server didn't send proper authorization"));
     log_out(0);
     return;
@@ -1247,27 +1474,25 @@ void AuthManager::on_get_authorization(tl_object_ptr<telegram_api::auth_Authoriz
   if (auth->setup_password_required_ && auth->otherwise_relogin_days_ > 0) {
     td_->option_manager_->set_option_integer("otherwise_relogin_days", auth->otherwise_relogin_days_);
   }
-  if (!auth->future_auth_token_.empty()) {
+  if (!auth->future_auth_token_.empty() && !is_bot()) {
     td_->option_manager_->set_option_string("authentication_token",
                                             base64url_encode(auth->future_auth_token_.as_slice()));
   }
   td_->attach_menu_manager_->init();
-  td_->messages_manager_->on_authorization_success();
   td_->dialog_filter_manager_->on_authorization_success();  // must be after MessagesManager::on_authorization_success()
                                                             // to have folders created
   td_->notification_manager_->init();
+  td_->notification_settings_manager_->init();
+  td_->online_manager_->init();
+  td_->promo_data_manager_->init();
   td_->reaction_manager_->init();
   td_->stickers_manager_->init();
+  td_->terms_of_service_manager_->init();
   td_->theme_manager_->init();
   td_->top_dialog_manager_->init();
   td_->updates_manager_->get_difference("on_get_authorization");
   if (!is_bot()) {
-    td_->on_online_updated(false, true);
-    td_->schedule_get_terms_of_service(0);
-    td_->reload_promo_data();
     G()->td_db()->get_binlog_pmc()->set("fetched_marks_as_unread", "1");
-  } else {
-    td_->set_is_bot_online(true);
   }
   send_closure(G()->config_manager(), &ConfigManager::request_config, false);
   on_current_query_ok();
@@ -1284,7 +1509,8 @@ void AuthManager::on_result(NetQueryPtr net_query) {
     if (net_query->is_error()) {
       if ((type == NetQueryType::SendCode || type == NetQueryType::SendEmailCode ||
            type == NetQueryType::VerifyEmailAddress || type == NetQueryType::SignIn ||
-           type == NetQueryType::RequestQrCode || type == NetQueryType::ImportQrCode) &&
+           type == NetQueryType::RequestQrCode || type == NetQueryType::ImportQrCode ||
+           type == NetQueryType::FinishPasskeyLogin) &&
           net_query->error().code() == 401 && net_query->error().message() == CSlice("SESSION_PASSWORD_NEEDED")) {
         auto dc_id = DcId::main();
         if (type == NetQueryType::ImportQrCode) {
@@ -1305,14 +1531,16 @@ void AuthManager::on_result(NetQueryPtr net_query) {
             other_user_ids_.clear();
             send_code_helper_ = SendCodeHelper();
             terms_of_service_ = TermsOfService();
+            passkey_parameters_ = {};
             was_qr_code_request_ = false;
+            was_passkey_login_request_ = false;
             was_check_bot_token_ = false;
           }
           on_current_query_error(net_query->move_as_error());
           return;
         }
         if (type != NetQueryType::RequestQrCode && type != NetQueryType::ImportQrCode &&
-            type != NetQueryType::GetPassword) {
+            type != NetQueryType::GetPassword && type != NetQueryType::FinishPasskeyLogin) {
           LOG(INFO) << "Ignore error for net query of type " << static_cast<int32>(type);
           type = NetQueryType::None;
         }
@@ -1338,6 +1566,12 @@ void AuthManager::on_result(NetQueryPtr net_query) {
     case NetQueryType::SendCode:
       on_send_code_result(std::move(net_query));
       break;
+    case NetQueryType::CheckPremiumPurchase:
+      on_check_premium_purchase_result(std::move(net_query));
+      break;
+    case NetQueryType::SetPremiumPurchaseTransaction:
+      on_set_premium_purchase_transaction_result(std::move(net_query));
+      break;
     case NetQueryType::SendEmailCode:
       on_send_email_code_result(std::move(net_query));
       break;
@@ -1352,6 +1586,9 @@ void AuthManager::on_result(NetQueryPtr net_query) {
       break;
     case NetQueryType::ImportQrCode:
       on_request_qr_code_result(std::move(net_query), true);
+      break;
+    case NetQueryType::FinishPasskeyLogin:
+      on_finish_passkey_login_result(std::move(net_query));
       break;
     case NetQueryType::GetPassword:
       on_get_password_result(std::move(net_query));
@@ -1421,7 +1658,12 @@ bool AuthManager::load_state() {
   }
 
   LOG(INFO) << "Load auth_state from database: " << tag("state", static_cast<int32>(db_state.state_));
-  if (db_state.state_ == State::WaitEmailAddress) {
+  if (db_state.state_ == State::WaitPremiumPurchase) {
+    store_product_id_ = std::move(db_state.store_product_id_);
+    support_email_address_ = std::move(db_state.support_email_address_);
+    support_email_subject_ = std::move(db_state.support_email_subject_);
+    send_code_helper_ = std::move(db_state.send_code_helper_);
+  } else if (db_state.state_ == State::WaitEmailAddress) {
     allow_apple_id_ = db_state.allow_apple_id_;
     allow_google_id_ = db_state.allow_google_id_;
     send_code_helper_ = std::move(db_state.send_code_helper_);
@@ -1452,8 +1694,9 @@ bool AuthManager::load_state() {
 }
 
 void AuthManager::save_state() {
-  if (state_ != State::WaitEmailAddress && state_ != State::WaitEmailCode && state_ != State::WaitCode &&
-      state_ != State::WaitQrCodeConfirmation && state_ != State::WaitPassword && state_ != State::WaitRegistration) {
+  if (state_ != State::WaitPremiumPurchase && state_ != State::WaitEmailAddress && state_ != State::WaitEmailCode &&
+      state_ != State::WaitCode && state_ != State::WaitQrCodeConfirmation && state_ != State::WaitPassword &&
+      state_ != State::WaitRegistration) {
     if (state_ != State::Closing) {
       G()->td_db()->get_binlog_pmc()->erase("auth_state");
     }
@@ -1461,7 +1704,10 @@ void AuthManager::save_state() {
   }
 
   DbState db_state = [&] {
-    if (state_ == State::WaitEmailAddress) {
+    if (state_ == State::WaitPremiumPurchase) {
+      return DbState::wait_premium_purchase(api_id_, api_hash_, store_product_id_, support_email_address_,
+                                            support_email_subject_, send_code_helper_);
+    } else if (state_ == State::WaitEmailAddress) {
       return DbState::wait_email_address(api_id_, api_hash_, allow_apple_id_, allow_google_id_, send_code_helper_);
     } else if (state_ == State::WaitEmailCode) {
       return DbState::wait_email_code(api_id_, api_hash_, allow_apple_id_, allow_google_id_, email_address_,

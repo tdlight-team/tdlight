@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -289,11 +289,14 @@ public final class Example {
 
     private static void sendMessage(long chatId, String message) {
         // initialize reply markup just for testing
-        TdApi.InlineKeyboardButton[] row = {new TdApi.InlineKeyboardButton("https://telegram.org?1", new TdApi.InlineKeyboardButtonTypeUrl()), new TdApi.InlineKeyboardButton("https://telegram.org?2", new TdApi.InlineKeyboardButtonTypeUrl()), new TdApi.InlineKeyboardButton("https://telegram.org?3", new TdApi.InlineKeyboardButtonTypeUrl())};
+        TdApi.InlineKeyboardButton[] row = {
+            new TdApi.InlineKeyboardButton("https://telegram.org?1", 0, null, new TdApi.InlineKeyboardButtonTypeUrl()),
+            new TdApi.InlineKeyboardButton("https://telegram.org?2", 0, null, new TdApi.InlineKeyboardButtonTypeUrl()),
+            new TdApi.InlineKeyboardButton("https://telegram.org?3", 0, null, new TdApi.InlineKeyboardButtonTypeUrl())};
         TdApi.ReplyMarkup replyMarkup = new TdApi.ReplyMarkupInlineKeyboard(new TdApi.InlineKeyboardButton[][]{row, row, row});
 
         TdApi.InputMessageContent content = new TdApi.InputMessageText(new TdApi.FormattedText(message, null), null, true);
-        client.send(new TdApi.SendMessage(chatId, 0, null, null, replyMarkup, content), defaultHandler);
+        client.send(new TdApi.SendMessage(chatId, null, null, null, replyMarkup, content), defaultHandler);
     }
 
     public static void main(String[] args) throws InterruptedException {
@@ -552,7 +555,7 @@ public final class Example {
                     TdApi.UpdateChatReplyMarkup updateChat = (TdApi.UpdateChatReplyMarkup) object;
                     TdApi.Chat chat = chats.get(updateChat.chatId);
                     synchronized (chat) {
-                        chat.replyMarkupMessageId = updateChat.replyMarkupMessageId;
+                        chat.replyMarkupMessageId = updateChat.replyMarkupMessage != null ? updateChat.replyMarkupMessage.id : 0;
                     }
                     break;
                 }
@@ -568,7 +571,7 @@ public final class Example {
                     TdApi.UpdateChatTheme updateChat = (TdApi.UpdateChatTheme) object;
                     TdApi.Chat chat = chats.get(updateChat.chatId);
                     synchronized (chat) {
-                        chat.themeName = updateChat.themeName;
+                        chat.theme = updateChat.theme;
                     }
                     break;
                 }

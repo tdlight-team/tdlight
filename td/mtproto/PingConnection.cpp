@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -106,7 +106,7 @@ class PingConnectionPingPong final
   unique_ptr<AuthData> auth_data_;
   unique_ptr<SessionConnection> connection_;
   int pong_cnt_{0};
-  double rtt_;
+  double rtt_{0.0};
   bool is_closed_{false};
   Status status_;
 
@@ -134,7 +134,7 @@ class PingConnectionPingPong final
   void on_container_sent(MessageId container_message_id, vector<MessageId> message_ids) final {
   }
 
-  Status on_pong() final {
+  Status on_pong(double ping_time, double pong_time, double current_time) final {
     pong_cnt_++;
     if (pong_cnt_ == 1) {
       rtt_ = Time::now();

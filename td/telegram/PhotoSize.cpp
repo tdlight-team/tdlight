@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -11,6 +11,7 @@
 #include "td/telegram/Td.h"
 #include "td/telegram/telegram_api.h"
 
+#include "td/utils/algorithm.h"
 #include "td/utils/base64.h"
 #include "td/utils/HttpUrl.h"
 #include "td/utils/logging.h"
@@ -144,7 +145,7 @@ PhotoSize get_secret_thumbnail_photo_size(FileManager *file_manager, BufferSlice
     return PhotoSize();
   }
   PhotoSize res;
-  res.type = 't';
+  res.type = PhotoSizeType('t');
   res.dimensions = get_dimensions(width, height, nullptr);
   res.size = narrow_cast<int32>(bytes.size());
 
@@ -249,12 +250,23 @@ Variant<PhotoSize, string> get_photo_size(FileManager *file_manager, PhotoSizeSo
 
   if (type.size() != 1) {
     LOG(ERROR) << "Wrong photoSize \"" << type << "\" " << res;
-    res.type = 0;
+    res.type = PhotoSizeType();
   } else {
-    res.type = static_cast<uint8>(type[0]);
-    if (res.type >= 128) {
-      LOG(ERROR) << "Wrong photoSize \"" << type << "\" " << res;
-      res.type = 0;
+    auto int_type = static_cast<uint8>(type[0]);
+    if (int_type >= 128) {
+      LOG(ERROR) << "Wrong photoSize \"" << int_type << "\" " << res;
+      int_type = 0;
+    }
+    res.type = PhotoSizeType(int_type);
+  }
+  if (format == PhotoFormat::Tgs) {
+    if (res.type == 's') {
+      format = PhotoFormat::Webp;
+    } else if (res.type == 'v') {
+      format = PhotoFormat::Webm;
+    } else if (res.type != 'a') {
+      LOG(ERROR) << "Receive sticker set thumbnail of type " << res.type;
+      format = PhotoFormat::Webp;
     }
   }
   if (source.get_type("get_photo_size") == PhotoSizeSource::Type::Thumbnail) {
@@ -283,16 +295,15 @@ AnimationSize get_animation_size(Td *td, PhotoSizeSource source, int64 id, int64
   if (size->type_ != "p" && size->type_ != "u" && size->type_ != "v") {
     LOG(ERROR) << "Unsupported videoSize \"" << size->type_ << "\" in " << to_string(size);
   }
-  result.type = static_cast<uint8>(size->type_[0]);
-  if (result.type >= 128) {
-    LOG(ERROR) << "Wrong videoSize \"" << result.type << "\" " << result;
-    result.type = 0;
+  auto type = static_cast<uint8>(size->type_[0]);
+  if (type >= 128) {
+    LOG(ERROR) << "Wrong videoSize \"" << type << "\" " << to_string(size);
+    type = 0;
   }
+  result.type = PhotoSizeType(type);
   result.dimensions = get_dimensions(size->w_, size->h_, "get_animation_size");
   result.size = size->size_;
-  if ((size->flags_ & telegram_api::videoSize::VIDEO_START_TS_MASK) != 0) {
-    result.main_frame_timestamp = size->video_start_ts_;
-  }
+  result.main_frame_timestamp = size->video_start_ts_;
 
   if (source.get_type("get_animation_size") == PhotoSizeSource::Type::Thumbnail) {
     source.thumbnail().thumbnail_type = result.type;
@@ -341,7 +352,7 @@ PhotoSize get_web_document_photo_size(FileManager *file_manager, FileType file_t
   }
 
   FileId file_id;
-  vector<tl_object_ptr<telegram_api::DocumentAttribute>> attributes;
+  vector<telegram_api::object_ptr<telegram_api::DocumentAttribute>> attributes;
   int32 size = 0;
   string mime_type;
   switch (web_document_ptr->get_id()) {
@@ -392,7 +403,7 @@ PhotoSize get_web_document_photo_size(FileManager *file_manager, FileType file_t
   for (auto &attribute : attributes) {
     switch (attribute->get_id()) {
       case telegram_api::documentAttributeImageSize::ID: {
-        auto image_size = move_tl_object_as<telegram_api::documentAttributeImageSize>(attribute);
+        auto image_size = telegram_api::move_object_as<telegram_api::documentAttributeImageSize>(attribute);
         dimensions = get_dimensions(image_size->w_, image_size->h_, "web documentAttributeImageSize");
         break;
       }
@@ -412,7 +423,7 @@ PhotoSize get_web_document_photo_size(FileManager *file_manager, FileType file_t
   }
 
   PhotoSize s;
-  s.type = is_animation ? 'v' : (is_gif ? 'g' : (file_type == FileType::Thumbnail ? 't' : 'n'));
+  s.type = PhotoSizeType(is_animation ? 'v' : (is_gif ? 'g' : (file_type == FileType::Thumbnail ? 't' : 'n')));
   s.dimensions = dimensions;
   s.size = size;
   s.file_id = file_id;
@@ -441,9 +452,10 @@ Result<PhotoSize> get_input_photo_size(FileManager *file_manager, FileId file_id
     return Status::Error(400, "Size of the photo is too big");
   }
 
-  int32 type = 'i';
-  if (file_view.has_remote_location() && !file_view.remote_location().is_web()) {
-    auto photo_size_source = file_view.remote_location().get_source();
+  auto type = PhotoSizeType('i');
+  const auto *full_remote_location = file_view.get_full_remote_location();
+  if (full_remote_location != nullptr && !full_remote_location->is_web()) {
+    auto photo_size_source = full_remote_location->get_source();
     if (photo_size_source.get_type("get_input_photo_size") == PhotoSizeSource::Type::Thumbnail) {
       auto old_type = photo_size_source.thumbnail().thumbnail_type;
       if (old_type != 't') {
@@ -469,13 +481,13 @@ PhotoSize get_input_thumbnail_photo_size(FileManager *file_manager, const td_api
     if (r_thumbnail_file_id.is_error()) {
       LOG(WARNING) << "Ignore thumbnail file: " << r_thumbnail_file_id.error().message();
     } else {
-      thumbnail.type = 't';
+      thumbnail.type = PhotoSizeType('t');
       thumbnail.dimensions = get_dimensions(input_thumbnail->width_, input_thumbnail->height_, nullptr);
       thumbnail.file_id = r_thumbnail_file_id.ok();
       CHECK(thumbnail.file_id.is_valid());
 
       FileView thumbnail_file_view = file_manager->get_file_view(thumbnail.file_id);
-      if (thumbnail_file_view.has_remote_location()) {
+      if (thumbnail_file_view.has_full_remote_location()) {
         // TODO file_manager->delete_remote_location(thumbnail.file_id);
       }
     }
@@ -498,6 +510,35 @@ td_api::object_ptr<td_api::thumbnail> get_thumbnail_object(FileManager *file_man
                                                 file_manager->get_file_object(photo_size.file_id));
 }
 
+td_api::object_ptr<td_api::photoSize> get_photo_size_object(FileManager *file_manager, const PhotoSize *photo_size) {
+  CHECK(photo_size != nullptr);
+  LOG_CHECK(photo_size->file_id.is_valid()) << *photo_size;
+  return td_api::make_object<td_api::photoSize>(
+      photo_size->type.type ? std::string(1, static_cast<char>(photo_size->type.type))
+                            : std::string(),  // TODO replace string type with integer type
+      file_manager->get_file_object(photo_size->file_id), photo_size->dimensions.width, photo_size->dimensions.height,
+      vector<int32>(photo_size->progressive_sizes));
+}
+
+vector<td_api::object_ptr<td_api::photoSize>> get_photo_sizes_object(FileManager *file_manager,
+                                                                     const vector<PhotoSize> &photo_sizes) {
+  auto sizes = transform(photo_sizes, [file_manager](const PhotoSize &photo_size) {
+    return get_photo_size_object(file_manager, &photo_size);
+  });
+  std::stable_sort(sizes.begin(), sizes.end(), [](const auto &lhs, const auto &rhs) {
+    if (lhs->photo_->expected_size_ != rhs->photo_->expected_size_) {
+      return lhs->photo_->expected_size_ < rhs->photo_->expected_size_;
+    }
+    return static_cast<uint32>(lhs->width_) * static_cast<uint32>(lhs->height_) <
+           static_cast<uint32>(rhs->width_) * static_cast<uint32>(rhs->height_);
+  });
+  td::remove_if(sizes, [](const auto &size) {
+    return !size->photo_->local_->can_be_downloaded_ && !size->photo_->local_->is_downloading_active_ &&
+           !size->photo_->local_->is_downloading_completed_;
+  });
+  return sizes;
+}
+
 bool operator==(const PhotoSize &lhs, const PhotoSize &rhs) {
   return lhs.type == rhs.type && lhs.dimensions == rhs.dimensions && lhs.size == rhs.size &&
          lhs.file_id == rhs.file_id && lhs.progressive_sizes == rhs.progressive_sizes;
@@ -516,8 +557,8 @@ bool operator<(const PhotoSize &lhs, const PhotoSize &rhs) {
   if (lhs_pixels != rhs_pixels) {
     return lhs_pixels < rhs_pixels;
   }
-  int32 lhs_type = lhs.type == 't' ? -1 : lhs.type;
-  int32 rhs_type = rhs.type == 't' ? -1 : rhs.type;
+  int32 lhs_type = lhs.type == 't' ? -1 : lhs.type.type;
+  int32 rhs_type = rhs.type == 't' ? -1 : rhs.type.type;
   if (lhs_type != rhs_type) {
     return lhs_type < rhs_type;
   }
@@ -528,8 +569,7 @@ bool operator<(const PhotoSize &lhs, const PhotoSize &rhs) {
 }
 
 StringBuilder &operator<<(StringBuilder &string_builder, const PhotoSize &photo_size) {
-  char type = 32 <= photo_size.type && photo_size.type <= 127 ? static_cast<char>(photo_size.type) : '?';
-  return string_builder << "{type = " << type << ", dimensions = " << photo_size.dimensions
+  return string_builder << "{type = " << photo_size.type << ", dimensions = " << photo_size.dimensions
                         << ", size = " << photo_size.size << ", file_id = " << photo_size.file_id
                         << ", progressive_sizes = " << photo_size.progressive_sizes << "}";
 }

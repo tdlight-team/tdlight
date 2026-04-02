@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -71,7 +71,7 @@ class SecretChatActor final : public NetQueryCallback {
 
     virtual bool close_flag() = 0;
 
-    // We don't want to expose the whole NetQueryDispatcher, MessagesManager and ContactsManager.
+    // We don't want to expose the whole NetQueryDispatcher, MessagesManager and UserManager.
     // So it is more clear which parts of MessagesManager are really used. And it is much easier to create tests.
     virtual void send_net_query(NetQueryPtr query, ActorShared<NetQueryCallback> callback, bool ordered) = 0;
 
@@ -117,7 +117,7 @@ class SecretChatActor final : public NetQueryCallback {
   // Outbound messages
   // Promise will be set just after corresponding log event is SENT to binlog.
   void send_message(tl_object_ptr<secret_api::DecryptedMessage> message,
-                    tl_object_ptr<telegram_api::InputEncryptedFile> file, Promise<> promise);
+                    telegram_api::object_ptr<telegram_api::InputEncryptedFile> file, Promise<> promise);
   void send_message_action(tl_object_ptr<secret_api::SendMessageAction> action);
   void send_read_history(int32 date,
                          Promise<>);  // no binlog event. TODO: Promise will be set after the net query is sent
@@ -184,8 +184,8 @@ class SecretChatActor final : public NetQueryCallback {
   };
 
   struct ConfigState {
-    int32 his_layer = 8;
-    int32 my_layer = 8;
+    int32 his_layer = 23;
+    int32 my_layer = 23;
     int32 ttl = 0;
 
     static Slice key() {
@@ -476,7 +476,7 @@ class SecretChatActor final : public NetQueryCallback {
   // We may accept some other change during that time, and there goes our problem
   // The reason for the change may already be invalid. So we should somehow recheck change, that
   // is already written to binlog, and apply it only if necessary.
-  // This is completly flawed.
+  // This is completely flawed.
   // (A-start_save_to_binlog ----> B-start_save_to_binlog+change_memory ----> A-finish_save_to_binlog+surprise)
   //
   // Instead, I suggest general solution that is already used with SeqNoState and QTS
@@ -616,7 +616,8 @@ class SecretChatActor final : public NetQueryCallback {
   void send_action(tl_object_ptr<secret_api::DecryptedMessageAction> action, int32 flags, Promise<> promise);
 
   void send_message_impl(tl_object_ptr<secret_api::DecryptedMessage> message,
-                         tl_object_ptr<telegram_api::InputEncryptedFile> file, int32 flags, Promise<> promise);
+                         telegram_api::object_ptr<telegram_api::InputEncryptedFile> file, int32 flags,
+                         Promise<> promise);
 
   void do_outbound_message_impl(unique_ptr<log_event::OutboundSecretMessage>, Promise<> promise);
 

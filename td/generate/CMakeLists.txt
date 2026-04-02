@@ -1,5 +1,5 @@
-if ((CMAKE_MAJOR_VERSION LESS 3) OR (CMAKE_VERSION VERSION_LESS "3.0.2"))
-  message(FATAL_ERROR "CMake >= 3.0.2 is required")
+if ((CMAKE_MAJOR_VERSION LESS 3) OR (CMAKE_VERSION VERSION_LESS "3.10"))
+  message(FATAL_ERROR "CMake >= 3.10 is required")
 endif()
 
 if (NOT DEFINED CMAKE_INSTALL_BINDIR)
@@ -14,11 +14,24 @@ set(TL_TD_AUTO_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/auto PARENT_SCOPE)
 
 set(TD_AUTO_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/auto/td)
 
-set(TL_TD_AUTO_SOURCE
+set(TL_MTPROTO_AUTO_SOURCE
   ${TD_AUTO_INCLUDE_DIR}/mtproto/mtproto_api.cpp
   ${TD_AUTO_INCLUDE_DIR}/mtproto/mtproto_api.h
   ${TD_AUTO_INCLUDE_DIR}/mtproto/mtproto_api.hpp
-  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api.cpp
+  PARENT_SCOPE
+)
+
+set(TL_TD_AUTO_SOURCE
+  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api_0.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api_1.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api_2.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api_3.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api_4.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api_5.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api_6.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api_7.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api_8.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api_9.cpp
   ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api.h
   ${TD_AUTO_INCLUDE_DIR}/telegram/telegram_api.hpp
   ${TD_AUTO_INCLUDE_DIR}/telegram/secret_api.cpp
@@ -27,15 +40,40 @@ set(TL_TD_AUTO_SOURCE
   PARENT_SCOPE
 )
 
+set(TL_E2E_AUTO_SOURCE
+  ${TD_AUTO_INCLUDE_DIR}/telegram/e2e_api.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/e2e_api.h
+  ${TD_AUTO_INCLUDE_DIR}/telegram/e2e_api.hpp
+  PARENT_SCOPE
+)
+
 set(TL_TD_API_AUTO_SOURCE
-  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_0.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_1.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_2.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_3.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_4.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_5.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_6.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_7.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_8.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_9.cpp
   ${TD_AUTO_INCLUDE_DIR}/telegram/td_api.h
   ${TD_AUTO_INCLUDE_DIR}/telegram/td_api.hpp
   PARENT_SCOPE
 )
 
 set(TL_TD_JSON_AUTO_SOURCE
-  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json_0.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json_1.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json_2.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json_3.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json_4.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json_5.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json_6.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json_7.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json_8.cpp
+  ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json_9.cpp
   ${TD_AUTO_INCLUDE_DIR}/telegram/td_api_json.h
   PARENT_SCOPE
 )
@@ -53,9 +91,7 @@ set(TL_DOTNET_AUTO_SOURCE
   PARENT_SCOPE
 )
 
-set(TL_GENERATE_COMMON_SOURCE
-  generate_common.cpp
-
+set(TL_WRITER_CPP_SOURCE
   tl_writer_cpp.cpp
   tl_writer_h.cpp
   tl_writer_hpp.cpp
@@ -69,6 +105,14 @@ set(TL_GENERATE_COMMON_SOURCE
   tl_writer_jni_cpp.h
   tl_writer_jni_h.h
   tl_writer_td.h
+)
+
+set(TL_GENERATE_MTPROTO_SOURCE
+  generate_mtproto.cpp
+)
+
+set(TL_GENERATE_COMMON_SOURCE
+  generate_common.cpp
 )
 
 set(TL_GENERATE_C_SOURCE
@@ -109,7 +153,7 @@ if (NOT CMAKE_CROSSCOMPILING)
   add_subdirectory(tl-parser)
 
   set(TLO_AUTO_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/auto/tlo)
-  set(TLO_FILES ${TLO_AUTO_INCLUDE_DIR}/mtproto_api.tlo ${TLO_AUTO_INCLUDE_DIR}/secret_api.tlo ${TLO_AUTO_INCLUDE_DIR}/td_api.tlo ${TLO_AUTO_INCLUDE_DIR}/telegram_api.tlo)
+  set(TLO_FILES ${TLO_AUTO_INCLUDE_DIR}/mtproto_api.tlo ${TLO_AUTO_INCLUDE_DIR}/secret_api.tlo ${TLO_AUTO_INCLUDE_DIR}/e2e_api.tlo ${TLO_AUTO_INCLUDE_DIR}/td_api.tlo ${TLO_AUTO_INCLUDE_DIR}/telegram_api.tlo)
   set(TD_API_TLO_FILE ${TLO_AUTO_INCLUDE_DIR}/td_api.tlo)
 
   # Ninja generator uses relative paths and can't correctly handle these dependencies
@@ -123,14 +167,34 @@ if (NOT CMAKE_CROSSCOMPILING)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMAND tl-parser -e auto/tlo/mtproto_api.tlo scheme/mtproto_api.tl
     COMMAND tl-parser -e auto/tlo/secret_api.tlo scheme/secret_api.tl
+    COMMAND tl-parser -e auto/tlo/e2e_api.tlo scheme/e2e_api.tl
     COMMAND tl-parser -e auto/tlo/td_api.tlo scheme/td_api.tl
     COMMAND tl-parser -e auto/tlo/telegram_api.tlo scheme/telegram_api.tl
     COMMENT "Generate TLO files"
-    DEPENDS tl-parser ${CMAKE_CURRENT_SOURCE_DIR}/scheme/mtproto_api.tl ${CMAKE_CURRENT_SOURCE_DIR}/scheme/secret_api.tl ${CMAKE_CURRENT_SOURCE_DIR}/scheme/td_api.tl ${CMAKE_CURRENT_SOURCE_DIR}/scheme/telegram_api.tl
+    DEPENDS tl-parser ${CMAKE_CURRENT_SOURCE_DIR}/scheme/mtproto_api.tl ${CMAKE_CURRENT_SOURCE_DIR}/scheme/secret_api.tl ${CMAKE_CURRENT_SOURCE_DIR}/scheme/e2e_api.tl ${CMAKE_CURRENT_SOURCE_DIR}/scheme/td_api.tl ${CMAKE_CURRENT_SOURCE_DIR}/scheme/telegram_api.tl
+  )
+
+  add_library(tl_writer_cpp STATIC ${TL_WRITER_CPP_SOURCE})
+  target_link_libraries(tl_writer_cpp PRIVATE tdtl)
+  target_include_directories(tl_writer_cpp PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+  if (TD_ENABLE_JNI)
+    target_compile_definitions(tl_writer_cpp PRIVATE TD_ENABLE_JNI=1 GIT_COMMIT_HASH=${TD_GIT_COMMIT_HASH})
+  endif()
+  if (TD_ENABLE_DOTNET)
+    target_compile_definitions(tl_writer_cpp PRIVATE DISABLE_HPP_DOCUMENTATION=1)
+  endif()
+
+  add_executable(generate_mtproto ${TL_GENERATE_MTPROTO_SOURCE})
+  target_link_libraries(generate_mtproto PRIVATE tdtl tl_writer_cpp)
+  add_custom_target(tl_generate_mtproto
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/auto
+    COMMAND generate_mtproto
+    COMMENT "Generate MTProto API source files"
+    DEPENDS generate_mtproto tl_generate_tlo ${TLO_FILES}
   )
 
   add_executable(generate_common ${TL_GENERATE_COMMON_SOURCE})
-  target_link_libraries(generate_common PRIVATE tdtl)
+  target_link_libraries(generate_common PRIVATE tdtl tl_writer_cpp)
   add_custom_target(tl_generate_common
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/auto
     COMMAND ${GENERATE_COMMON_CMD}
@@ -139,9 +203,6 @@ if (NOT CMAKE_CROSSCOMPILING)
   )
   if (TD_ENABLE_JNI)
     target_compile_definitions(generate_common PRIVATE TD_ENABLE_JNI=1)
-  endif()
-  if (TD_ENABLE_DOTNET)
-    target_compile_definitions(generate_common PRIVATE DISABLE_HPP_DOCUMENTATION=1)
   endif()
 
   add_executable(generate_c ${TL_GENERATE_C_SOURCE})
@@ -155,6 +216,7 @@ if (NOT CMAKE_CROSSCOMPILING)
 
   add_executable(td_generate_java_api ${TL_GENERATE_JAVA_SOURCE})
   target_link_libraries(td_generate_java_api PRIVATE tdtl)
+  target_compile_definitions(td_generate_java_api PRIVATE GIT_COMMIT_HASH=${TD_GIT_COMMIT_HASH})
 
   add_executable(generate_json ${TL_GENERATE_JSON_SOURCE})
   target_link_libraries(generate_json PRIVATE tdtl tdutils)
@@ -173,7 +235,7 @@ if (NOT CMAKE_CROSSCOMPILING)
 
   if (TD_ENABLE_DOTNET)
     if (PHP_EXECUTABLE)
-      set(GENERATE_DOTNET_API_CMD td_generate_dotnet_api ${TD_API_TLO_FILE} && ${PHP_EXECUTABLE} ../DotnetTlDocumentationGenerator.php ../scheme/td_api.tl td/telegram/TdDotNetApi.h)
+      set(GENERATE_DOTNET_API_CMD td_generate_dotnet_api ${TD_API_TLO_FILE} && ${PHP_EXECUTABLE} ../DotnetTlDocumentationGenerator.php ../scheme/td_api.tl td/telegram/Telegram.Td.xml ${TD_ENABLE_DOTNET})
     else()
       set(GENERATE_DOTNET_API_CMD td_generate_dotnet_api ${TD_API_TLO_FILE})
     endif()
@@ -187,7 +249,4 @@ if (NOT CMAKE_CROSSCOMPILING)
       DEPENDS td_generate_dotnet_api tl_generate_tlo ${TD_API_TLO_FILE} ${CMAKE_CURRENT_SOURCE_DIR}/scheme/td_api.tl ${CMAKE_CURRENT_SOURCE_DIR}/DotnetTlDocumentationGenerator.php
     )
   endif()
-
-  add_executable(remove_documentation remove_documentation.cpp)
-  target_link_libraries(remove_documentation PRIVATE tdtl)
 endif()

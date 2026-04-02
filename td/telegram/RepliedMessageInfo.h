@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -10,11 +10,11 @@
 #include "td/telegram/DialogId.h"
 #include "td/telegram/files/FileId.h"
 #include "td/telegram/MessageContent.h"
-#include "td/telegram/MessageEntity.h"
 #include "td/telegram/MessageFullId.h"
 #include "td/telegram/MessageId.h"
 #include "td/telegram/MessageInputReplyTo.h"
 #include "td/telegram/MessageOrigin.h"
+#include "td/telegram/MessageQuote.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
 #include "td/telegram/UserId.h"
@@ -27,7 +27,7 @@
 namespace td {
 
 class Dependencies;
-
+class MessageTopic;
 class Td;
 
 class RepliedMessageInfo {
@@ -36,9 +36,8 @@ class RepliedMessageInfo {
   int32 origin_date_ = 0;               // for replies in other chats
   MessageOrigin origin_;                // for replies in other chats
   unique_ptr<MessageContent> content_;  // for replies in other chats
-  FormattedText quote_;
-  int32 quote_position_ = 0;
-  bool is_quote_manual_ = false;
+  MessageQuote quote_;
+  int32 todo_item_id_ = 0;
 
   friend bool operator==(const RepliedMessageInfo &lhs, const RepliedMessageInfo &rhs);
 
@@ -62,7 +61,7 @@ class RepliedMessageInfo {
   RepliedMessageInfo(Td *td, tl_object_ptr<telegram_api::messageReplyHeader> &&reply_header, DialogId dialog_id,
                      MessageId message_id, int32 date);
 
-  RepliedMessageInfo(Td *td, const MessageInputReplyTo &input_reply_to);
+  RepliedMessageInfo(Td *td, const MessageInputReplyTo &input_reply_to, const MessageTopic &topic);
 
   RepliedMessageInfo clone(Td *td) const;
 
@@ -74,7 +73,7 @@ class RepliedMessageInfo {
     return origin_date_ != 0;
   }
 
-  bool need_reget() const;
+  bool need_reget(const Td *td) const;
 
   static bool need_reply_changed_warning(
       const Td *td, const RepliedMessageInfo &old_info, const RepliedMessageInfo &new_info,
@@ -87,12 +86,12 @@ class RepliedMessageInfo {
 
   vector<ChannelId> get_min_channel_ids(Td *td) const;
 
-  void add_dependencies(Dependencies &dependencies, bool is_bot) const;
+  void add_dependencies(Dependencies &dependencies, UserId my_user_id, bool is_bot) const;
 
-  td_api::object_ptr<td_api::messageReplyToMessage> get_message_reply_to_message_object(Td *td,
-                                                                                        DialogId dialog_id) const;
+  td_api::object_ptr<td_api::messageReplyToMessage> get_message_reply_to_message_object(Td *td, DialogId dialog_id,
+                                                                                        MessageId message_id) const;
 
-  MessageInputReplyTo get_input_reply_to() const;
+  MessageInputReplyTo get_message_input_reply_to() const;
 
   void set_message_id(MessageId new_message_id) {
     CHECK(message_id_.is_valid() || message_id_.is_valid_scheduled());

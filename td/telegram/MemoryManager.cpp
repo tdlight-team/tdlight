@@ -13,7 +13,6 @@
 #include "td/telegram/AccessRights.h"
 #include "td/telegram/AuthManager.h"
 #include "td/telegram/ConfigManager.h"
-#include "td/telegram/ContactsManager.h"
 #include "td/telegram/DialogId.h"
 #include "td/telegram/Document.h"
 #include "td/telegram/DocumentsManager.h"
@@ -80,7 +79,7 @@ void MemoryManager::tear_down() {
   parent_.reset();
 }
 
-void MemoryManager::get_memory_stats(bool full, Promise<MemoryStats> promise) const {
+void MemoryManager::get_memory_stats(bool full, Promise<MemoryStats> promise) {
   vector<string> output = {"{"};
 
   output.push_back("\"memory_stats\":{");
@@ -92,7 +91,6 @@ void MemoryManager::get_memory_stats(bool full, Promise<MemoryStats> promise) co
   output.push_back(",");
 
   output.push_back("\"contacts_manager_\":{");
-  td_->contacts_manager_->memory_stats(output);
   output.push_back("}");
 
   output.push_back(",");

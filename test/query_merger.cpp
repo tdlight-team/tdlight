@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -87,10 +87,6 @@ class TestQueryMerger final : public td::Actor {
   std::queue<td::int64> next_query_ids_;
   td::FlatHashSet<td::int64> pending_query_ids_;
 };
-
-constexpr std::size_t TestQueryMerger::MAX_CONCURRENT_QUERY_COUNT;
-constexpr std::size_t TestQueryMerger::MAX_MERGED_QUERY_COUNT;
-constexpr std::size_t TestQueryMerger::MAX_QUERY_COUNT;
 
 TEST(QueryMerger, stress) {
   td::ConcurrentScheduler sched(0, 0);

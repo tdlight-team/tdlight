@@ -1,11 +1,12 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/telegram/RepliedMessageInfo.h"
 
+#include "td/telegram/AuthManager.h"
 #include "td/telegram/Dependencies.h"
 #include "td/telegram/DialogManager.h"
 #include "td/telegram/MessageContent.h"
@@ -13,7 +14,7 @@
 #include "td/telegram/MessageCopyOptions.h"
 #include "td/telegram/MessageFullId.h"
 #include "td/telegram/MessagesManager.h"
-#include "td/telegram/misc.h"
+#include "td/telegram/MessageTopic.h"
 #include "td/telegram/OptionManager.h"
 #include "td/telegram/ScheduledServerMessageId.h"
 #include "td/telegram/ServerMessageId.h"
@@ -87,7 +88,8 @@ RepliedMessageInfo::RepliedMessageInfo(Td *td, tl_object_ptr<telegram_api::messa
         LOG(ERROR) << "Receive reply to " << message_id_ << " in " << MessageFullId{dialog_id, message_id};
         message_id_ = MessageId();
       }
-    } else if (reply_header->reply_to_peer_id_ != nullptr) {
+    } else if (reply_header->reply_to_peer_id_ != nullptr &&
+               !(td->auth_manager_->is_bot() && dialog_id.get_type() == DialogType::User)) {
       LOG(ERROR) << "Receive " << to_string(reply_header) << " in " << MessageFullId{dialog_id, message_id};
     }
     if (reply_header->reply_from_ != nullptr) {
@@ -115,34 +117,20 @@ RepliedMessageInfo::RepliedMessageInfo(Td *td, tl_object_ptr<telegram_api::messa
       }
     }
   }
-  if ((!origin_.is_empty() || message_id_ != MessageId()) && !reply_header->quote_text_.empty()) {
-    is_quote_manual_ = reply_header->quote_;
-    auto entities = get_message_entities(td->contacts_manager_.get(), std::move(reply_header->quote_entities_),
-                                         "RepliedMessageInfo");
-    auto status = fix_formatted_text(reply_header->quote_text_, entities, true, true, true, true, false);
-    if (status.is_error()) {
-      if (!clean_input_string(reply_header->quote_text_)) {
-        reply_header->quote_text_.clear();
-      }
-      entities.clear();
-    }
-    quote_ = FormattedText{std::move(reply_header->quote_text_), std::move(entities)};
-    quote_position_ = max(0, reply_header->quote_offset_);
-    remove_unallowed_quote_entities(quote_);
+  if (!origin_.is_empty() || message_id_ != MessageId()) {
+    quote_ = MessageQuote(td, reply_header);
   }
+  todo_item_id_ = max(0, reply_header->todo_item_id_);
 }
 
-RepliedMessageInfo::RepliedMessageInfo(Td *td, const MessageInputReplyTo &input_reply_to) {
-  if (!input_reply_to.message_id_.is_valid()) {
+RepliedMessageInfo::RepliedMessageInfo(Td *td, const MessageInputReplyTo &input_reply_to, const MessageTopic &topic) {
+  if (!input_reply_to.message_id_.is_valid() && !input_reply_to.message_id_.is_valid_scheduled()) {
     return;
   }
   message_id_ = input_reply_to.message_id_;
-  if (!input_reply_to.quote_.text.empty()) {
-    quote_ = input_reply_to.quote_;
-    quote_position_ = input_reply_to.quote_position_;
-    is_quote_manual_ = true;
-  }
-  if (input_reply_to.dialog_id_ != DialogId()) {
+  quote_ = input_reply_to.quote_.clone();
+  todo_item_id_ = input_reply_to.todo_item_id_;
+  if (input_reply_to.dialog_id_ != DialogId() && input_reply_to.message_id_.is_valid()) {
     auto info =
         td->messages_manager_->get_forwarded_message_info({input_reply_to.dialog_id_, input_reply_to.message_id_});
     if (info.origin_date_ == 0 || info.origin_.is_empty() || info.content_ == nullptr) {
@@ -154,13 +142,21 @@ RepliedMessageInfo::RepliedMessageInfo(Td *td, const MessageInputReplyTo &input_
     content_ = std::move(info.content_);
     auto content_text = get_message_content_text_mutable(content_.get());
     if (content_text != nullptr) {
-      if (!is_quote_manual_) {
-        quote_ = std::move(*content_text);
-        remove_unallowed_quote_entities(quote_);
-        truncate_formatted_text(
-            quote_, static_cast<size_t>(td->option_manager_->get_option_integer("message_reply_quote_length_max")));
+      if (quote_.is_empty()) {
+        quote_ = MessageQuote::create_automatic_quote(td, std::move(*content_text));
       }
-      *content_text = {};
+      *content_text = FormattedText();
+
+      if (content_->get_type() == MessageContentType::Text) {
+        auto content = get_message_content_object(content_.get(), td, DialogId(), MessageId(), false, true, DialogId(),
+                                                  0, false, true, -1, false, false);
+        if (content->get_id() == td_api::messageText::ID) {
+          const auto *message_text = static_cast<const td_api::messageText *>(content.get());
+          if (message_text->link_preview_ == nullptr && message_text->link_preview_options_ == nullptr) {
+            content_ = nullptr;
+          }
+        }
+      }
     }
     auto origin_message_full_id = origin_.get_message_full_id();
     if (origin_message_full_id.get_message_id().is_valid()) {
@@ -170,6 +166,10 @@ RepliedMessageInfo::RepliedMessageInfo(Td *td, const MessageInputReplyTo &input_
       dialog_id_ = input_reply_to.dialog_id_;
     } else {
       message_id_ = MessageId();
+
+      if (topic.is_forum() && !topic.is_forum_general()) {
+        message_id_ = topic.get_forum_topic_id().to_top_thread_message_id();
+      }
     }
   }
 }
@@ -184,14 +184,13 @@ RepliedMessageInfo RepliedMessageInfo::clone(Td *td) const {
     result.content_ = dup_message_content(td, td->dialog_manager_->get_my_dialog_id(), content_.get(),
                                           MessageContentDupType::Forward, MessageCopyOptions());
   }
-  result.quote_ = quote_;
-  result.quote_position_ = quote_position_;
-  result.is_quote_manual_ = is_quote_manual_;
+  result.quote_ = quote_.clone();
+  result.todo_item_id_ = todo_item_id_;
   return result;
 }
 
-bool RepliedMessageInfo::need_reget() const {
-  return content_ != nullptr && need_reget_message_content(content_.get());
+bool RepliedMessageInfo::need_reget(const Td *td) const {
+  return content_ != nullptr && need_reget_message_content(td, content_.get());
 }
 
 bool RepliedMessageInfo::need_reply_changed_warning(
@@ -207,22 +206,9 @@ bool RepliedMessageInfo::need_reply_changed_warning(
     // only signature can change in the message origin
     return true;
   }
-  if (old_info.quote_position_ != new_info.quote_position_ &&
-      max(old_info.quote_position_, new_info.quote_position_) <
-          static_cast<int32>(min(old_info.quote_.text.size(), new_info.quote_.text.size()))) {
-    // quote position can't change
-    return true;
-  }
-  if (old_info.is_quote_manual_ != new_info.is_quote_manual_) {
-    // quote manual property can't change
-    return true;
-  }
-  if (old_info.quote_ != new_info.quote_) {
-    if (old_info.is_quote_manual_) {
-      return true;
-    }
-    // automatic quote can change if the original message was edited
-    return false;
+  auto need_quote_warning = MessageQuote::need_quote_changed_warning(old_info.quote_, new_info.quote_);
+  if (need_quote_warning != 0) {
+    return need_quote_warning > 0;
   }
   if (old_info.dialog_id_ != new_info.dialog_id_ && old_info.dialog_id_ != DialogId() &&
       new_info.dialog_id_ != DialogId()) {
@@ -262,6 +248,19 @@ bool RepliedMessageInfo::need_reply_changed_warning(
     // move of reply to the top thread message after deletion of the replied message
     return false;
   }
+  if (is_yet_unsent && td->auth_manager_->is_bot() && old_top_thread_message_id.is_valid() &&
+      new_info.dialog_id_ == DialogId()) {
+    // move or initialization of reply to the forum topic creation message after deletion of the replied message
+    return false;
+  }
+  if (new_info.todo_item_id_ != 0 && old_info.todo_item_id_ == 0) {
+    // a message received by an old version
+    return false;
+  }
+  if (is_yet_unsent && old_info.todo_item_id_ != 0 && new_info.todo_item_id_ == 0) {
+    // server ignored todo_item_id
+    return false;
+  }
   return true;
 }
 
@@ -278,7 +277,7 @@ vector<UserId> RepliedMessageInfo::get_min_user_ids(Td *td) const {
     user_ids.push_back(dialog_id_.get_user_id());
   }
   origin_.add_user_ids(user_ids);
-  // not supported server-side: add_formatted_text_user_ids(user_ids, &quote_);
+  // not supported server-side: quote_.add_user_ids(user_ids);
   if (content_ != nullptr) {
     append(user_ids, get_message_content_min_user_ids(td, content_.get()));
   }
@@ -297,17 +296,17 @@ vector<ChannelId> RepliedMessageInfo::get_min_channel_ids(Td *td) const {
   return channel_ids;
 }
 
-void RepliedMessageInfo::add_dependencies(Dependencies &dependencies, bool is_bot) const {
+void RepliedMessageInfo::add_dependencies(Dependencies &dependencies, UserId my_user_id, bool is_bot) const {
   dependencies.add_dialog_and_dependencies(dialog_id_);
   origin_.add_dependencies(dependencies);
-  add_formatted_text_dependencies(dependencies, &quote_);
+  quote_.add_dependencies(dependencies);
   if (content_ != nullptr) {
-    add_message_content_dependencies(dependencies, content_.get(), is_bot);
+    add_message_content_dependencies(dependencies, content_.get(), my_user_id, is_bot);
   }
 }
 
 td_api::object_ptr<td_api::messageReplyToMessage> RepliedMessageInfo::get_message_reply_to_message_object(
-    Td *td, DialogId dialog_id) const {
+    Td *td, DialogId dialog_id, MessageId message_id) const {
   if (dialog_id_.is_valid()) {
     dialog_id = dialog_id_;
   } else {
@@ -318,12 +317,6 @@ td_api::object_ptr<td_api::messageReplyToMessage> RepliedMessageInfo::get_messag
     chat_id = 0;
   }
 
-  td_api::object_ptr<td_api::textQuote> quote;
-  if (!quote_.text.empty()) {
-    quote = td_api::make_object<td_api::textQuote>(get_formatted_text_object(quote_, true, -1), quote_position_,
-                                                   is_quote_manual_);
-  }
-
   td_api::object_ptr<td_api::MessageOrigin> origin;
   if (!origin_.is_empty()) {
     origin = origin_.get_message_origin_object(td);
@@ -332,14 +325,15 @@ td_api::object_ptr<td_api::messageReplyToMessage> RepliedMessageInfo::get_messag
 
   td_api::object_ptr<td_api::MessageContent> content;
   if (content_ != nullptr) {
-    content = get_message_content_object(content_.get(), td, dialog_id, 0, false, true, -1, false, false);
+    content = get_message_content_object(content_.get(), td, DialogId(), message_id, false, true, DialogId(), 0, false,
+                                         true, -1, false, false);
     switch (content->get_id()) {
       case td_api::messageUnsupported::ID:
         content = nullptr;
         break;
       case td_api::messageText::ID: {
         const auto *message_text = static_cast<const td_api::messageText *>(content.get());
-        if (message_text->web_page_ == nullptr && message_text->link_preview_options_ == nullptr) {
+        if (message_text->link_preview_ == nullptr && message_text->link_preview_options_ == nullptr) {
           content = nullptr;
         }
         break;
@@ -350,14 +344,15 @@ td_api::object_ptr<td_api::messageReplyToMessage> RepliedMessageInfo::get_messag
     }
   }
 
-  return td_api::make_object<td_api::messageReplyToMessage>(chat_id, message_id_.get(), std::move(quote),
-                                                            std::move(origin), origin_date_, std::move(content));
+  return td_api::make_object<td_api::messageReplyToMessage>(
+      chat_id, message_id_.get(), quote_.get_text_quote_object(td->user_manager_.get()), todo_item_id_,
+      std::move(origin), origin_date_, std::move(content));
 }
 
-MessageInputReplyTo RepliedMessageInfo::get_input_reply_to() const {
+MessageInputReplyTo RepliedMessageInfo::get_message_input_reply_to() const {
   CHECK(!is_external());
-  if (message_id_.is_valid()) {
-    return MessageInputReplyTo{message_id_, dialog_id_, FormattedText{quote_}, quote_position_};
+  if (message_id_.is_valid() || message_id_.is_valid_scheduled()) {
+    return MessageInputReplyTo(message_id_, dialog_id_, quote_.clone(true), todo_item_id_);
   }
   return {};
 }
@@ -366,7 +361,7 @@ MessageId RepliedMessageInfo::get_same_chat_reply_to_message_id(bool ignore_exte
   if (message_id_ == MessageId()) {
     return {};
   }
-  if (ignore_external && !origin_.is_empty()) {
+  if (!ignore_external && !origin_.is_empty()) {
     return {};
   }
   return dialog_id_ == DialogId() ? message_id_ : MessageId();
@@ -397,7 +392,7 @@ void RepliedMessageInfo::unregister_content(Td *td) const {
 bool operator==(const RepliedMessageInfo &lhs, const RepliedMessageInfo &rhs) {
   if (!(lhs.message_id_ == rhs.message_id_ && lhs.dialog_id_ == rhs.dialog_id_ &&
         lhs.origin_date_ == rhs.origin_date_ && lhs.origin_ == rhs.origin_ && lhs.quote_ == rhs.quote_ &&
-        lhs.quote_position_ == rhs.quote_position_ && lhs.is_quote_manual_ == rhs.is_quote_manual_)) {
+        lhs.todo_item_id_ == rhs.todo_item_id_)) {
     return false;
   }
   bool need_update = false;
@@ -421,12 +416,11 @@ StringBuilder &operator<<(StringBuilder &string_builder, const RepliedMessageInf
   if (info.origin_date_ != 0) {
     string_builder << " sent at " << info.origin_date_ << " by " << info.origin_;
   }
-  if (!info.quote_.text.empty()) {
-    string_builder << " with " << info.quote_.text.size() << (info.is_quote_manual_ ? " manually" : "")
-                   << " quoted bytes";
-    if (info.quote_position_ != 0) {
-      string_builder << " at position " << info.quote_position_;
-    }
+  if (info.todo_item_id_ != 0) {
+    string_builder << " to task " << info.todo_item_id_;
+  }
+  if (!info.quote_.is_empty()) {
+    string_builder << info.quote_;
   }
   if (info.content_ != nullptr) {
     string_builder << " and content of the type " << info.content_->get_type();

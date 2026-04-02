@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -9,7 +9,7 @@
 #include "td/telegram/DialogId.h"
 #include "td/telegram/ForumTopicEditedData.h"
 #include "td/telegram/ForumTopicIcon.h"
-#include "td/telegram/MessageId.h"
+#include "td/telegram/ForumTopicId.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
 
@@ -21,7 +21,8 @@ namespace td {
 class Td;
 
 class ForumTopicInfo {
-  MessageId top_thread_message_id_;
+  DialogId dialog_id_;
+  ForumTopicId forum_topic_id_;
   string title_;
   ForumTopicIcon icon_;
   int32 creation_date_ = 0;
@@ -29,35 +30,43 @@ class ForumTopicInfo {
   bool is_outgoing_ = false;
   bool is_closed_ = false;
   bool is_hidden_ = false;
+  bool is_title_missing_ = false;
 
   friend bool operator==(const ForumTopicInfo &lhs, const ForumTopicInfo &rhs);
-  friend bool operator!=(const ForumTopicInfo &lhs, const ForumTopicInfo &rhs);
 
   friend StringBuilder &operator<<(StringBuilder &string_builder, const ForumTopicInfo &topic_info);
 
  public:
   ForumTopicInfo() = default;
 
-  ForumTopicInfo(Td *td, const tl_object_ptr<telegram_api::ForumTopic> &forum_topic_ptr);
+  ForumTopicInfo(Td *td, const telegram_api::object_ptr<telegram_api::ForumTopic> &forum_topic_ptr,
+                 DialogId expected_dialog_id);
 
-  ForumTopicInfo(MessageId top_thread_message_id, string title, ForumTopicIcon icon, int32 creation_date,
-                 DialogId creator_dialog_id, bool is_outgoing, bool is_closed, bool is_hidden)
-      : top_thread_message_id_(top_thread_message_id)
+  ForumTopicInfo(DialogId dialog_id, ForumTopicId forum_topic_id, string title, ForumTopicIcon icon,
+                 int32 creation_date, DialogId creator_dialog_id, bool is_outgoing, bool is_closed, bool is_hidden,
+                 bool is_title_missing)
+      : dialog_id_(dialog_id)
+      , forum_topic_id_(forum_topic_id)
       , title_(std::move(title))
       , icon_(std::move(icon))
       , creation_date_(creation_date)
       , creator_dialog_id_(creator_dialog_id)
       , is_outgoing_(is_outgoing)
       , is_closed_(is_closed)
-      , is_hidden_(is_hidden) {
+      , is_hidden_(is_hidden)
+      , is_title_missing_(is_title_missing) {
   }
 
   bool is_empty() const {
-    return !top_thread_message_id_.is_valid();
+    return !forum_topic_id_.is_valid();
   }
 
-  MessageId get_top_thread_message_id() const {
-    return top_thread_message_id_;
+  DialogId get_dialog_id() const {
+    return dialog_id_;
+  }
+
+  ForumTopicId get_forum_topic_id() const {
+    return forum_topic_id_;
   }
 
   DialogId get_creator_dialog_id() const {

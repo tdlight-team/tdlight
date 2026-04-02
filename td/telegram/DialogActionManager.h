@@ -1,15 +1,17 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2023
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #pragma once
 
+#include "td/telegram/BusinessConnectionId.h"
 #include "td/telegram/DialogAction.h"
 #include "td/telegram/DialogId.h"
 #include "td/telegram/MessageContentType.h"
 #include "td/telegram/MessageId.h"
+#include "td/telegram/MessageTopic.h"
 #include "td/telegram/net/NetQuery.h"
 
 #include "td/actor/actor.h"
@@ -31,8 +33,8 @@ class DialogActionManager final : public Actor {
                         DialogAction action, int32 date,
                         MessageContentType message_content_type = MessageContentType::None);
 
-  void send_dialog_action(DialogId dialog_id, MessageId top_thread_message_id, DialogAction action,
-                          Promise<Unit> &&promise);
+  void send_dialog_action(DialogId dialog_id, MessageTopic message_topic, BusinessConnectionId business_connection_id,
+                          DialogAction action, Promise<Unit> &&promise);
 
   void cancel_send_dialog_action_queries(DialogId dialog_id);
 

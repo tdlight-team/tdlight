@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -20,8 +20,10 @@ void ForumTopicInfo::store(StorerT &storer) const {
   STORE_FLAG(is_outgoing_);
   STORE_FLAG(is_closed_);
   STORE_FLAG(is_hidden_);
+  STORE_FLAG(is_title_missing_);
   END_STORE_FLAGS();
-  td::store(top_thread_message_id_, storer);
+  td::store(dialog_id_, storer);
+  td::store(forum_topic_id_, storer);
   td::store(title_, storer);
   td::store(icon_, storer);
   td::store(creation_date_, storer);
@@ -34,8 +36,10 @@ void ForumTopicInfo::parse(ParserT &parser) {
   PARSE_FLAG(is_outgoing_);
   PARSE_FLAG(is_closed_);
   PARSE_FLAG(is_hidden_);
+  PARSE_FLAG(is_title_missing_);
   END_PARSE_FLAGS();
-  td::parse(top_thread_message_id_, parser);
+  td::parse(dialog_id_, parser);
+  td::parse(forum_topic_id_, parser);
   td::parse(title_, parser);
   td::parse(icon_, parser);
   td::parse(creation_date_, parser);

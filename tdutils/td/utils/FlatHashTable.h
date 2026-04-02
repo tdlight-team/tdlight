@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -45,8 +45,7 @@ class FlatHashTable {
   using key_type = typename NodeT::public_key_type;
   using value_type = typename NodeT::public_type;
 
-  // TODO use EndSentinel for end() after switching to C++17
-  // struct EndSentinel {};
+  struct EndSentinel {};
 
   struct Iterator {
     using iterator_category = std::forward_iterator_tag;
@@ -85,12 +84,10 @@ class FlatHashTable {
       return it_;
     }
 
-    bool operator==(const Iterator &other) const {
-      DCHECK(other.it_ == nullptr);
+    bool operator==(const EndSentinel &) const {
       return it_ == nullptr;
     }
-    bool operator!=(const Iterator &other) const {
-      DCHECK(other.it_ == nullptr);
+    bool operator!=(const EndSentinel &) const {
       return it_ != nullptr;
     }
 
@@ -122,11 +119,11 @@ class FlatHashTable {
     pointer operator->() const {
       return &*it_;
     }
-    bool operator==(const ConstIterator &other) const {
-      return it_ == other.it_;
+    bool operator==(const EndSentinel &other) const {
+      return it_ == other;
     }
-    bool operator!=(const ConstIterator &other) const {
-      return it_ != other.it_;
+    bool operator!=(const EndSentinel &other) const {
+      return it_ != other;
     }
 
     ConstIterator() = default;
@@ -157,10 +154,10 @@ class FlatHashTable {
       return it_;
     }
 
-    bool operator==(const Iterator &) const {
+    bool operator==(const EndSentinel &) const {
       return it_ == nullptr;
     }
-    bool operator!=(const Iterator &) const {
+    bool operator!=(const EndSentinel &) const {
       return it_ != nullptr;
     }
 
@@ -179,10 +176,10 @@ class FlatHashTable {
       return &it_->get_public();
     }
 
-    bool operator==(const ConstIterator &) const {
+    bool operator==(const EndSentinel &) const {
       return it_ == nullptr;
     }
-    bool operator!=(const ConstIterator &) const {
+    bool operator!=(const EndSentinel &) const {
       return it_ != nullptr;
     }
 
@@ -285,14 +282,13 @@ class FlatHashTable {
   Iterator begin() {
     return create_iterator(begin_impl());
   }
-  Iterator end() {
-    return Iterator();
-  }
+
   ConstIterator begin() const {
     return ConstIterator(const_cast<FlatHashTable *>(this)->begin());
   }
-  ConstIterator end() const {
-    return ConstIterator();
+
+  EndSentinel end() const {
+    return EndSentinel();
   }
 
   void reserve(size_t size) {
@@ -308,7 +304,7 @@ class FlatHashTable {
 
   template <class... ArgsT>
   std::pair<NodePointer, bool> emplace(KeyT key, ArgsT &&...args) {
-    CHECK(!is_hash_table_key_empty(key));
+    CHECK(!is_hash_table_key_empty<EqT>(key));
     if (unlikely(bucket_count_mask_ == 0)) {
       CHECK(used_node_count_ == 0);
       resize(8);
@@ -385,9 +381,9 @@ class FlatHashTable {
   }
 
   template <class F>
-  void remove_if(F &&f) {
+  bool remove_if(F &&f) {
     if (empty()) {
-      return;
+      return false;
     }
 
     auto it = begin_impl();
@@ -401,9 +397,11 @@ class FlatHashTable {
       } while (!it->empty());
     }
     auto first_empty = it;
+    bool is_removed = false;
     while (it != end) {
       if (!it->empty() && f(it->get_public())) {
         erase_node(it);
+        is_removed = true;
       } else {
         ++it;
       }
@@ -411,11 +409,13 @@ class FlatHashTable {
     for (it = nodes_; it != first_empty;) {
       if (!it->empty() && f(it->get_public())) {
         erase_node(it);
+        is_removed = true;
       } else {
         ++it;
       }
     }
     try_shrink();
+    return is_removed;
   }
 
  private:
@@ -447,7 +447,7 @@ class FlatHashTable {
   }
 
   NodeT *find_impl(const KeyT &key) {
-    if (unlikely(nodes_ == nullptr) || is_hash_table_key_empty(key)) {
+    if (unlikely(nodes_ == nullptr) || is_hash_table_key_empty<EqT>(key)) {
       return nullptr;
     }
     auto bucket = calc_bucket(key);

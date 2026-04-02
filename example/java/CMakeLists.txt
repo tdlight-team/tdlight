@@ -1,21 +1,9 @@
-cmake_minimum_required(VERSION 3.0.2 FATAL_ERROR)
-
-if (POLICY CMP0065)
-  # do not export symbols from executables
-  # affects compiler checks in project(), so must be set before it
-  cmake_policy(SET CMP0065 NEW)
-endif()
+cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 
 project(TdJavaExample VERSION 1.0 LANGUAGES CXX)
 
-if (POLICY CMP0054)
-  # do not expand quoted arguments
-  cmake_policy(SET CMP0054 NEW)
-endif()
-if (POLICY CMP0060)
-  # link libraries by full path
-  cmake_policy(SET CMP0060 NEW)
-endif()
+option(TD_JSON_JAVA "Use \"ON\" to build Java wrapper for JSON API.")
+
 if (POLICY CMP0074)
   # use environment variables to find libraries
   cmake_policy(SET CMP0074 NEW)
@@ -34,39 +22,59 @@ endif()
 message(STATUS "Found Java: ${Java_JAVAC_EXECUTABLE} ${Java_JAVADOC_EXECUTABLE}")
 
 # Generating TdApi.java
-find_program(PHP_EXECUTABLE php)
-if ((CMAKE_SYSTEM_NAME MATCHES "FreeBSD") AND (CMAKE_SYSTEM_VERSION MATCHES "HBSD"))
-  set(PHP_EXECUTABLE "PHP_EXECUTABLE-NOTFOUND")
-endif()
-
 set(TD_API_JAVA_PACKAGE "org/drinkless/tdlib")
 set(TD_API_JAVA_PATH ${CMAKE_CURRENT_SOURCE_DIR})
-set(TD_API_TLO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/td/bin/td/generate/scheme/td_api.tlo)
-set(TD_API_TL_PATH ${CMAKE_CURRENT_SOURCE_DIR}/td/bin/td/generate/scheme/td_api.tl)
-set(JAVADOC_TL_DOCUMENTATION_GENERATOR_PATH ${CMAKE_CURRENT_SOURCE_DIR}/td/bin/td/generate/JavadocTlDocumentationGenerator.php)
-set(GENERATE_JAVA_API_CMD ${CMAKE_CURRENT_SOURCE_DIR}/td/bin/td_generate_java_api TdApi ${TD_API_TLO_PATH} ${TD_API_JAVA_PATH} ${TD_API_JAVA_PACKAGE})
-if (PHP_EXECUTABLE)
-  set(GENERATE_JAVA_API_CMD ${GENERATE_JAVA_API_CMD} && ${PHP_EXECUTABLE} ${JAVADOC_TL_DOCUMENTATION_GENERATOR_PATH} ${TD_API_TL_PATH} ${TD_API_JAVA_PATH}/${TD_API_JAVA_PACKAGE}/TdApi.java)
+set(JAVA_SOURCE_PATH "${TD_API_JAVA_PATH}/${TD_API_JAVA_PACKAGE}")
+if (TD_JSON_JAVA)
+  add_custom_target(td_generate_java_api
+    COMMAND cmake -E echo ""
+    COMMENT "Skip generation of Java TDLib API source files"
+  )
+
+  set(JAVA_EXAMPLE_FILES "${JAVA_SOURCE_PATH}/example/JsonExample.java")
+  set(JAVA_SOURCE_FILES "${JAVA_SOURCE_PATH}/JsonClient.java")
+else()
+  find_program(PHP_EXECUTABLE php)
+  if ((CMAKE_SYSTEM_NAME MATCHES "FreeBSD") AND (CMAKE_SYSTEM_VERSION MATCHES "HBSD"))
+    set(PHP_EXECUTABLE "PHP_EXECUTABLE-NOTFOUND")
+  endif()
+
+  set(TD_API_TLO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/td/bin/td/generate/scheme/td_api.tlo)
+  set(TD_API_TL_PATH ${CMAKE_CURRENT_SOURCE_DIR}/td/bin/td/generate/scheme/td_api.tl)
+  set(JAVADOC_TL_DOCUMENTATION_GENERATOR_PATH ${CMAKE_CURRENT_SOURCE_DIR}/td/bin/td/generate/JavadocTlDocumentationGenerator.php)
+  set(GENERATE_JAVA_API_CMD ${CMAKE_CURRENT_SOURCE_DIR}/td/bin/td_generate_java_api TdApi "${TD_API_TLO_PATH}" "${TD_API_JAVA_PATH}" "${TD_API_JAVA_PACKAGE}")
+  if (PHP_EXECUTABLE)
+    set(GENERATE_JAVA_API_CMD ${GENERATE_JAVA_API_CMD} && ${PHP_EXECUTABLE} "${JAVADOC_TL_DOCUMENTATION_GENERATOR_PATH}" "${TD_API_TL_PATH}" "${JAVA_SOURCE_PATH}/TdApi.java")
+  endif()
+
+  add_custom_target(td_generate_java_api
+    COMMAND ${GENERATE_JAVA_API_CMD}
+    COMMENT "Generating Java TDLib API source files"
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/td/bin/td_generate_java_api ${TD_API_TLO_PATH} ${TD_API_TL_PATH} ${JAVADOC_TL_DOCUMENTATION_GENERATOR_PATH}
+  )
+
+  set(JAVA_EXAMPLE_FILES "${JAVA_SOURCE_PATH}/example/Example.java")
+  set(JAVA_SOURCE_FILES "${JAVA_SOURCE_PATH}/Client.java" "${JAVA_SOURCE_PATH}/TdApi.java")
 endif()
 
-add_custom_target(td_generate_java_api
-  COMMAND ${GENERATE_JAVA_API_CMD}
-  COMMENT "Generating Java TDLib API source files"
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/td/bin/td_generate_java_api ${TD_API_TLO_PATH} ${TD_API_TL_PATH} ${JAVADOC_TL_DOCUMENTATION_GENERATOR_PATH}
-)
+if (CMAKE_VERSION VERSION_LESS "3.17")
+  set(CMAKE_RM_COMMAND remove_directory)
+else()
+  set(CMAKE_RM_COMMAND rm -rf --)
+endif()
 
-set(JAVA_SOURCE_PATH "${TD_API_JAVA_PATH}/${TD_API_JAVA_PACKAGE}")
 get_filename_component(JAVA_OUTPUT_DIRECTORY ${CMAKE_INSTALL_PREFIX}/bin REALPATH BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 file(MAKE_DIRECTORY ${JAVA_OUTPUT_DIRECTORY})
 add_custom_target(build_java
-  COMMAND ${Java_JAVAC_EXECUTABLE} -encoding UTF-8 -d ${JAVA_OUTPUT_DIRECTORY} ${JAVA_SOURCE_PATH}/example/Example.java ${JAVA_SOURCE_PATH}/Client.java ${JAVA_SOURCE_PATH}/TdApi.java
+  COMMAND ${CMAKE_COMMAND} -E ${CMAKE_RM_COMMAND} "${JAVA_OUTPUT_DIRECTORY}/${TD_API_JAVA_PACKAGE}"
+  COMMAND ${Java_JAVAC_EXECUTABLE} -encoding UTF-8 -d "${JAVA_OUTPUT_DIRECTORY}" ${JAVA_EXAMPLE_FILES} ${JAVA_SOURCE_FILES}
   COMMENT "Building Java code"
   DEPENDS td_generate_java_api
 )
 
 add_custom_target(generate_javadoc
-  COMMAND ${Java_JAVADOC_EXECUTABLE} -encoding UTF-8 -charset UTF-8 -d ${JAVA_OUTPUT_DIRECTORY}/../docs org.drinkless.tdlib
-  WORKING_DIRECTORY ${TD_API_JAVA_PATH}
+  COMMAND ${CMAKE_COMMAND} -E ${CMAKE_RM_COMMAND} "${JAVA_OUTPUT_DIRECTORY}/../docs"
+  COMMAND ${Java_JAVADOC_EXECUTABLE} -encoding UTF-8 -charset UTF-8 -d "${JAVA_OUTPUT_DIRECTORY}/../docs" ${JAVA_SOURCE_FILES}
   COMMENT "Generating Javadoc documentation"
   DEPENDS td_generate_java_api
 )
@@ -75,9 +83,17 @@ add_custom_target(generate_javadoc
 add_library(tdjni SHARED
   td_jni.cpp
 )
-target_include_directories(tdjni PRIVATE ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
-target_link_libraries(tdjni PRIVATE Td::TdStatic ${JAVA_JVM_LIBRARY})
+target_include_directories(tdjni SYSTEM PRIVATE ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
+target_link_libraries(tdjni PRIVATE ${JAVA_JVM_LIBRARY})
 target_compile_definitions(tdjni PRIVATE PACKAGE_NAME="${TD_API_JAVA_PACKAGE}")
+
+if (TD_JSON_JAVA)
+  target_link_libraries(tdjni PRIVATE Td::TdJsonStatic)
+  target_compile_definitions(tdjni PRIVATE TD_JSON_JAVA=1)
+  set_target_properties(tdjni PROPERTIES OUTPUT_NAME "tdjsonjava")
+else()
+  target_link_libraries(tdjni PRIVATE Td::TdStatic)
+endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(GCC 1)

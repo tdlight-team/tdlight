@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -23,7 +23,6 @@ class DialogLocation {
   string address_;
 
   friend bool operator==(const DialogLocation &lhs, const DialogLocation &rhs);
-  friend bool operator!=(const DialogLocation &lhs, const DialogLocation &rhs);
 
   friend StringBuilder &operator<<(StringBuilder &string_builder, const DialogLocation &location);
 
@@ -32,11 +31,17 @@ class DialogLocation {
 
   DialogLocation(Td *td, telegram_api::object_ptr<telegram_api::ChannelLocation> &&channel_location_ptr);
 
+  DialogLocation(Td *td, telegram_api::object_ptr<telegram_api::businessLocation> &&business_location);
+
   explicit DialogLocation(td_api::object_ptr<td_api::chatLocation> &&chat_location);
+
+  explicit DialogLocation(td_api::object_ptr<td_api::businessLocation> &&business_location);
 
   bool empty() const;
 
   td_api::object_ptr<td_api::chatLocation> get_chat_location_object() const;
+
+  td_api::object_ptr<td_api::businessLocation> get_business_location_object() const;
 
   telegram_api::object_ptr<telegram_api::InputGeoPoint> get_input_geo_point() const;
 

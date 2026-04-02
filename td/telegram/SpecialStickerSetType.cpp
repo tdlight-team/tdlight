@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -45,6 +45,10 @@ SpecialStickerSetType SpecialStickerSetType::default_topic_icons() {
   return SpecialStickerSetType("default_topic_icons_sticker_set");
 }
 
+SpecialStickerSetType SpecialStickerSetType::ton_gifts() {
+  return SpecialStickerSetType("ton_gifts_sticker_set");
+}
+
 SpecialStickerSetType::SpecialStickerSetType(
     const telegram_api::object_ptr<telegram_api::InputStickerSet> &input_sticker_set) {
   CHECK(input_sticker_set != nullptr);
@@ -72,6 +76,9 @@ SpecialStickerSetType::SpecialStickerSetType(
       break;
     case telegram_api::inputStickerSetEmojiDefaultTopicIcons::ID:
       *this = default_topic_icons();
+      break;
+    case telegram_api::inputStickerSetTonGifts::ID:
+      *this = ton_gifts();
       break;
     default:
       UNREACHABLE();
@@ -108,6 +115,9 @@ telegram_api::object_ptr<telegram_api::InputStickerSet> SpecialStickerSetType::g
   }
   if (*this == default_topic_icons()) {
     return telegram_api::make_object<telegram_api::inputStickerSetEmojiDefaultTopicIcons>();
+  }
+  if (*this == ton_gifts()) {
+    return telegram_api::make_object<telegram_api::inputStickerSetTonGifts>();
   }
   auto emoji = get_dice_emoji();
   if (!emoji.empty()) {

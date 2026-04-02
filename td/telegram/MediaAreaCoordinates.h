@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -20,13 +20,13 @@ class MediaAreaCoordinates {
   double width_ = 0.0;
   double height_ = 0.0;
   double rotation_angle_ = 0.0;
+  double radius_ = 0.0;
 
   friend bool operator==(const MediaAreaCoordinates &lhs, const MediaAreaCoordinates &rhs);
-  friend bool operator!=(const MediaAreaCoordinates &lhs, const MediaAreaCoordinates &rhs);
 
   friend StringBuilder &operator<<(StringBuilder &string_builder, const MediaAreaCoordinates &coordinates);
 
-  void init(double x, double y, double width, double height, double rotation_angle);
+  void init(double x, double y, double width, double height, double rotation_angle, double radius);
 
  public:
   MediaAreaCoordinates() = default;

@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2024
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -13,6 +13,7 @@
 #include "td/telegram/net/DcId.h"
 #include "td/telegram/PhotoFormat.h"
 #include "td/telegram/PhotoSizeSource.h"
+#include "td/telegram/PhotoSizeType.h"
 #include "td/telegram/StickerPhotoSize.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
@@ -29,7 +30,7 @@ class FileManager;
 class Td;
 
 struct PhotoSize {
-  int32 type = 0;
+  PhotoSizeType type;
   int32 size = 0;
   Dimensions dimensions;
   FileId file_id;
@@ -73,6 +74,11 @@ PhotoSize get_input_thumbnail_photo_size(FileManager *file_manager, const td_api
 
 td_api::object_ptr<td_api::thumbnail> get_thumbnail_object(FileManager *file_manager, const PhotoSize &photo_size,
                                                            PhotoFormat format);
+
+td_api::object_ptr<td_api::photoSize> get_photo_size_object(FileManager *file_manager, const PhotoSize *photo_size);
+
+vector<td_api::object_ptr<td_api::photoSize>> get_photo_sizes_object(FileManager *file_manager,
+                                                                     const vector<PhotoSize> &photo_sizes);
 
 bool operator==(const PhotoSize &lhs, const PhotoSize &rhs);
 bool operator!=(const PhotoSize &lhs, const PhotoSize &rhs);
