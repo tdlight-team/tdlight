@@ -266,6 +266,10 @@ void gen_json_converter_file(const tl::simple::Schema &schema, const std::string
     sb << "\nvoid to_json(JsonValueScope &jv, const td_api::object_ptr<Object> &value);\n";
     sb << "\nStatus from_json(td_api::object_ptr<Function> &to, td::JsonValue from);\n";
     sb << "\nvoid to_json(JsonValueScope &jv, const Object &object);\n\n";
+    sb << "template <class T>\n"
+          "std::string to_json_string(const T &object) {\n"
+          "  return td::json_encode(td::ToJson(object));\n"
+          "}\n\n";
   } else if (file_number == 0) {
     sb << R"ABCD(
 void to_json(JsonValueScope &jv, const td_api::object_ptr<Object> &value) {
