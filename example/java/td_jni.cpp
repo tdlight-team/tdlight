@@ -9,6 +9,7 @@
 #else
 #include <td/telegram/Client.h>
 #include <td/telegram/td_api.h>
+#include <td/generate/auto/td/telegram/td_api_json.h>
 #endif
 
 #include <td/tl/tl_jni_object.h>
@@ -109,8 +110,16 @@ static jstring Object_toString(JNIEnv *env, jobject object) {
   return td::jni::to_jstring(env, to_string(td::td_api::Object::fetch(env, object)));
 }
 
+static jstring Object_toJsonString(JNIEnv *env, jobject object) {
+  return td::jni::to_jstring(env, td::json_encode(td::ToJson(td::td_api::Object::fetch(env, object))));
+}
+
 static jstring Function_toString(JNIEnv *env, jobject object) {
   return td::jni::to_jstring(env, to_string(td::td_api::Function::fetch(env, object)));
+}
+
+static jstring Function_toJsonString(JNIEnv *env, jobject object) {
+  return td::jni::to_jstring(env, td::json_encode(td::ToJson(td::td_api::Function::fetch(env, object))));
 }
 #endif
 
@@ -221,8 +230,10 @@ static jint register_native(JavaVM *vm) {
                   Client_nativeClientSetLogMessageHandler);
 
   register_method(object_class, "toString", "()Ljava/lang/String;", Object_toString);
+  register_method(object_class, "toJsonString", "()Ljava/lang/String;", Object_toJsonString);
 
   register_method(function_class, "toString", "()Ljava/lang/String;", Function_toString);
+  register_method(function_class, "toJsonString", "()Ljava/lang/String;", Function_toJsonString);
 #undef TD_FUNCTION
 #undef TD_OBJECT
 

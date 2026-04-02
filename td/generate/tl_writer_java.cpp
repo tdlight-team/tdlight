@@ -258,8 +258,9 @@ std::string TD_TL_writer_java::gen_class_begin(const std::string &class_name, co
     result += "        public " + class_name + "() {\n        }\n";
   }
   if (class_name == gen_base_tl_class_name() || class_name == gen_base_function_class_name()) {
-    result += "\n        public native String toString();\n";
-  }
+        result += "\n        public native String toString();\n";
+        result += "\n        public native String toJsonString();\n";
+    }
 
   return result;
 }
