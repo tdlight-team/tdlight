@@ -21,6 +21,8 @@
 
 namespace td_jni {
 
+using td::td_api::to_json_string;
+
 #ifdef TD_JSON_JAVA
 static jint JsonClient_createClientId(JNIEnv *env, jclass clazz) {
   return static_cast<jint>(td_create_client_id());
@@ -111,7 +113,7 @@ static jstring Object_toString(JNIEnv *env, jobject object) {
 }
 
 static jstring Object_toJsonString(JNIEnv *env, jobject object) {
-  return td::jni::to_jstring(env, td::json_encode(td::ToJson(td::td_api::Object::fetch(env, object))));
+  return td::jni::to_jstring(env, to_json_string(td::td_api::Object::fetch(env, object)));
 }
 
 static jstring Function_toString(JNIEnv *env, jobject object) {
@@ -119,7 +121,7 @@ static jstring Function_toString(JNIEnv *env, jobject object) {
 }
 
 static jstring Function_toJsonString(JNIEnv *env, jobject object) {
-  return td::jni::to_jstring(env, td::json_encode(td::ToJson(td::td_api::Function::fetch(env, object))));
+  return td::jni::to_jstring(env, to_json_string(td::td_api::Function::fetch(env, object)));
 }
 #endif
 
