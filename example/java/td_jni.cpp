@@ -9,7 +9,6 @@
 #else
 #include <td/telegram/Client.h>
 #include <td/telegram/td_api.h>
-#include <td/generate/auto/td/telegram/td_api_json.h>
 #endif
 
 #include <td/tl/tl_jni_object.h>
