@@ -280,6 +280,14 @@ Status from_json(td_api::object_ptr<Function> &to, td::JsonValue from) {
   return td::from_json(to, std::move(from));
 }
 
+std::string to_json_string(const Object &object) {
+  return td::json_encode<std::string>(td::ToJson(object));
+}
+
+std::string to_json_string(const Function &object) {
+  return "{}";
+}
+
 void to_json(JsonValueScope &jv, const Object &object) {
   switch (object.get_id()) {
 )ABCD";
