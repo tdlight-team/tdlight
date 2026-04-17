@@ -1320,6 +1320,7 @@ void Td::init_managers() {
   web_pages_manager_ = make_unique<WebPagesManager>(this, create_reference());
   web_pages_manager_actor_ = register_actor("WebPagesManager", web_pages_manager_.get());
   G()->set_web_pages_manager(web_pages_manager_actor_.get());
+  memory_manager_ = make_unique<MemoryManager>(this, create_reference());
   memory_manager_actor_ = register_actor("MemoryManager", memory_manager_.get());
   G()->set_memory_manager(memory_manager_actor_.get());
 }
