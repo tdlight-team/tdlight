@@ -468,6 +468,12 @@ static auto qr_code_authentication() {
   return td::td_api::make_object<td::td_api::internalLinkTypeQrCodeAuthentication>();
 }
 
+static auto request_managed_bot(const td::string &manager_bot_username, const td::string &suggested_bot_username,
+                                const td::string &suggested_bot_name) {
+  return td::td_api::make_object<td::td_api::internalLinkTypeRequestManagedBot>(
+      manager_bot_username, suggested_bot_username, suggested_bot_name);
+}
+
 static auto restore_purchases() {
   return td::td_api::make_object<td::td_api::internalLinkTypeRestorePurchases>();
 }
@@ -1343,6 +1349,16 @@ TEST(Link, parse_internal_link_part3) {
       proxy_mtproto("google.com", 80, "7hI0VniQq83vEjRWeJCrze8BAQEBAQEBAQE"));
   parse_internal_link("t.me/proxy?server=google.com&port=8%30&secret=7tAAAAAAAAAAAAAAAAAAAAAAAAcuZ29vZ2xlLmNvbQ",
                       proxy_mtproto("google.com", 80, "7tAAAAAAAAAAAAAAAAAAAAAAAAcuZ29vZ2xlLmNvbQ"));
+  parse_internal_link(
+      "t.me/proxy?server=google.com&port=8%30&secret=7ge9Ug57SJOnMe8J%2BSj5pyZnaXRodWIuY29t",
+      proxy_mtproto("google.com", 80, "7ge9Ug57SJOnMe8J-Sj5pyZnaXRodWIuY29t"));  // invalid, but accepted
+  parse_internal_link(
+      "t.me/proxy?server=google.com&port=8%30&secret=7ge9Ug57SJOnMe8J%2FSj5pyZnaXRodWIuY29t",
+      proxy_mtproto("google.com", 80, "7ge9Ug57SJOnMe8J_Sj5pyZnaXRodWIuY29t"));  // invalid, but accepted
+  parse_internal_link("t.me/proxy?server=google.com&port=8%30&secret=7ge9Ug57SJOnMe8J-Sj5pyZnaXRodWIuY29t",
+                      proxy_mtproto("google.com", 80, "7ge9Ug57SJOnMe8J-Sj5pyZnaXRodWIuY29t"));
+  parse_internal_link("t.me/proxy?server=google.com&port=8%30&secret=7ge9Ug57SJOnMe8J_Sj5pyZnaXRodWIuY29t",
+                      proxy_mtproto("google.com", 80, "7ge9Ug57SJOnMe8J_Sj5pyZnaXRodWIuY29t"));
   parse_internal_link("t.me/proxy", unsupported_proxy());
   parse_internal_link("t.me/proxy?server=&port=80&secret=1234567890abcdef1234567890ABCDEF", unsupported_proxy());
   parse_internal_link("t.me/proxy?server=%FF&port=80&secret=1234567890abcdef1234567890ABCDEF", unsupported_proxy());
@@ -1818,6 +1834,19 @@ TEST(Link, parse_internal_link_part4) {
   parse_internal_link("tg:premium_multigift?ref=abc%30ef", premium_gift_purchase("abc0ef"));
   parse_internal_link("tg:premium_multigift?ref=abcde%ff", unknown_deep_link("tg://premium_multigift?ref=abcde%ff"));
   parse_internal_link("tg://premium_multigift?ref=", premium_gift_purchase(""));
+
+  parse_internal_link("t.me/newbot/0manager/tesager?name=", public_chat("newbot"));
+  parse_internal_link("t.me/newbot/manager/0testbot?name=", public_chat("newbot"));
+  parse_internal_link("t.me/newbot/manager/testbot?name=", request_managed_bot("manager", "testbot", ""));
+  parse_internal_link("t.me/newbot/manager/testbot?name=asd", request_managed_bot("manager", "testbot", "asd"));
+
+  parse_internal_link("tg:newbot?manager=managerot&username=testbot&name=asd",
+                      request_managed_bot("managerot", "testbot", "asd"));
+  parse_internal_link("tg:newbot?manager=managerot&username=testbot", request_managed_bot("managerot", "testbot", ""));
+  parse_internal_link("tg:newbot?manager=0manager&username=testbot",
+                      unknown_deep_link("tg://newbot?manager=0manager&username=testbot"));
+  parse_internal_link("tg:newbot?manager=managerot&username=0testbot",
+                      unknown_deep_link("tg://newbot?manager=managerot&username=0testbot"));
 
   parse_internal_link("tg://settings", settings());
   parse_internal_link("tg://setting", unknown_deep_link("tg://setting"));

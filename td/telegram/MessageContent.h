@@ -24,6 +24,7 @@
 #include "td/telegram/MessageId.h"
 #include "td/telegram/MessageSelfDestructType.h"
 #include "td/telegram/Photo.h"
+#include "td/telegram/PollId.h"
 #include "td/telegram/QuickReplyMessageFullId.h"
 #include "td/telegram/ReplyMarkup.h"
 #include "td/telegram/secret_api.h"
@@ -109,7 +110,7 @@ unique_ptr<MessageContent> create_text_message_content(string text, vector<Messa
                                                        bool force_large_media, bool skip_confitmation,
                                                        string &&web_page_url);
 
-unique_ptr<MessageContent> create_photo_message_content(Photo photo);
+unique_ptr<MessageContent> create_photo_message_content(Photo photo, FileId video_file_id);
 
 unique_ptr<MessageContent> create_video_message_content(FileId file_id, Photo cover, int32 start_timestamp);
 
@@ -172,7 +173,7 @@ BackgroundInfo get_message_content_my_background_info(const MessageContent *cont
 
 ChatTheme get_message_content_chat_theme(const MessageContent *content);
 
-MessageFullId get_message_content_replied_message_id(DialogId dialog_id, const MessageContent *content);
+MessageFullId get_message_content_replied_message_full_id(DialogId dialog_id, const MessageContent *content);
 
 std::pair<InputGroupCallId, bool> get_message_content_group_call_info(const MessageContent *content);
 
@@ -189,9 +190,23 @@ telegram_api::object_ptr<telegram_api::inputPhoneCall> get_message_content_input
 
 int32 get_message_content_live_location_period(const MessageContent *content);
 
+PollId get_message_content_poll_id(const MessageContent *content);
+
 bool get_message_content_poll_is_anonymous(const Td *td, const MessageContent *content);
 
 bool get_message_content_poll_is_closed(const Td *td, const MessageContent *content);
+
+bool get_message_content_poll_can_add_option(const Td *td, const MessageContent *content);
+
+bool get_message_content_poll_has_unread_votes(const Td *td, const MessageContent *content);
+
+void remove_message_content_poll_has_unread_votes(Td *td, const MessageContent *content);
+
+void get_message_content_poll_option_properties(Td *td, const MessageContent *content, const string &option_id,
+                                                DialogId dialog_id, MessageId message_id, bool can_be_replied,
+                                                bool can_be_replied_in_another_chat, bool can_get_link, bool is_forward,
+                                                bool is_outgoing,
+                                                Promise<td_api::object_ptr<td_api::pollOptionProperties>> &&promise);
 
 bool get_message_content_to_do_list_others_can_append(const MessageContent *content);
 
@@ -206,16 +221,6 @@ bool has_message_content_web_page(const MessageContent *content);
 void remove_message_content_web_page(MessageContent *content);
 
 bool can_message_content_have_media_timestamp(const MessageContent *content);
-
-void set_message_content_poll_answer(Td *td, const MessageContent *content, MessageFullId message_full_id,
-                                     vector<int32> &&option_ids, Promise<Unit> &&promise);
-
-void get_message_content_poll_voters(Td *td, const MessageContent *content, MessageFullId message_full_id,
-                                     int32 option_id, int32 offset, int32 limit,
-                                     Promise<td_api::object_ptr<td_api::pollVoters>> &&promise);
-
-void stop_message_content_poll(Td *td, const MessageContent *content, MessageFullId message_full_id,
-                               unique_ptr<ReplyMarkup> &&reply_markup, Promise<Unit> &&promise);
 
 void merge_message_contents(Td *td, const MessageContent *old_content, MessageContent *new_content,
                             bool need_message_changed_warning, DialogId dialog_id, bool need_merge_files,
