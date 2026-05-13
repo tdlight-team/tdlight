@@ -17,6 +17,9 @@
 #include "td/db/SqliteKeyValueSafe.h"
 #include "td/db/TsSeqKeyValue.h"
 
+#include "td/telegram/Global.h"
+#include "td/telegram/TdDb.h"
+
 #include "td/actor/actor.h"
 #include "td/actor/ConcurrentScheduler.h"
 
@@ -145,6 +148,63 @@ TEST(DB, sqlite_lfs) {
   db.exec("PRAGMA journal_mode=WAL").ensure();
   db.exec("PRAGMA user_version").ensure();
   td::SqliteDb::destroy(path).ignore();
+}
+
+static void check_tdlight_database_mode(td::CSlice path, const td::DbKey &key, td::CSlice value) {
+  td::SqliteDb::destroy(path).ignore();
+
+  {
+    auto db = key.is_empty() ? td::SqliteDb::open_with_key(path, true, key).move_as_ok()
+                             : td::SqliteDb::change_key(path, true, key, td::DbKey::empty()).move_as_ok();
+    db.set_user_version(321).ensure();
+    td::SqliteKeyValue kv;
+    kv.init_with_connection(db.clone(), "kv").ensure();
+    kv.set("mode", value.str());
+  }
+  {
+    auto db = td::SqliteDb::open_with_key(path, false, key).move_as_ok();
+    td::SqliteKeyValue kv;
+    kv.init_with_connection(db.clone(), "kv").ensure();
+    CHECK(kv.get("mode") == value);
+    CHECK(db.user_version().ok() == 321);
+  }
+}
+
+static bool has_plaintext_sqlite_header(td::CSlice path) {
+  auto content = td::read_file(path).move_as_ok();
+  return td::Slice(content).substr(0, 15) == "SQLite format 3";
+}
+
+TEST(DB, tdlight_database_modes) {
+  td::string database_directory = "test_tdlight_database";
+  td::string custom_database_directory =
+      database_directory + "?journal=off&use_custom_database_format=true&cache=memory";
+
+  CHECK(td::Global::get_database_directory_path(database_directory) == database_directory);
+  CHECK(!td::Global::get_use_custom_database(database_directory));
+  CHECK(td::Global::get_database_directory_path(custom_database_directory) == database_directory);
+  CHECK(td::Global::get_use_custom_database(custom_database_directory));
+
+  auto default_standard_key = td::TdDb::as_db_key("", false);
+  CHECK(default_standard_key.is_raw_key());
+  CHECK(default_standard_key.data() == "cucumber");
+  auto standard_key = td::TdDb::as_db_key(td::string(32, 's'), false);
+  CHECK(standard_key.is_raw_key());
+  CHECK(standard_key.data().size() == 32);
+  auto custom_key = td::TdDb::as_db_key("", true);
+  CHECK(custom_key.is_empty());
+
+  td::CSlice standard_path = "test_tdlight_standard_database";
+  td::CSlice custom_path = "test_tdlight_custom_database";
+  check_tdlight_database_mode(standard_path, standard_key, "standard");
+  check_tdlight_database_mode(custom_path, custom_key, "custom");
+
+  CHECK(!has_plaintext_sqlite_header(standard_path));
+  CHECK(has_plaintext_sqlite_header(custom_path));
+  td::SqliteDb::open_with_key(standard_path, false, custom_key).ensure_error();
+  td::SqliteDb::open_with_key(custom_path, false, standard_key).ensure_error();
+  td::SqliteDb::destroy(standard_path).ignore();
+  td::SqliteDb::destroy(custom_path).ignore();
 }
 
 TEST(DB, sqlite_encryption) {
