@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 
-project(TDLib VERSION 1.8.63 LANGUAGES CXX C)
+project(TDLib VERSION 1.8.64 LANGUAGES CXX C)
 
 if (NOT DEFINED CMAKE_MODULE_PATH)
   set(CMAKE_MODULE_PATH "")
@@ -350,6 +350,8 @@ set(TDLIB_SOURCE_PART1
   td/telegram/ActiveStoryState.cpp
   td/telegram/AffiliateType.cpp
   td/telegram/AgeVerificationParameters.cpp
+  td/telegram/AiComposeTone.cpp
+  td/telegram/AiComposeToneExample.cpp
   td/telegram/AlarmManager.cpp
   td/telegram/AnimationsManager.cpp
   td/telegram/Application.cpp
@@ -365,6 +367,7 @@ set(TDLIB_SOURCE_PART1
   td/telegram/BaseTheme.cpp
   td/telegram/Birthdate.cpp
   td/telegram/BoostManager.cpp
+  td/telegram/BotAccessSettings.cpp
   td/telegram/BotCommand.cpp
   td/telegram/BotCommandScope.cpp
   td/telegram/BotInfoManager.cpp
@@ -708,6 +711,8 @@ set(TDLIB_SOURCE_PART2
   td/telegram/AffectedHistory.h
   td/telegram/AffiliateType.h
   td/telegram/AgeVerificationParameters.h
+  td/telegram/AiComposeTone.h
+  td/telegram/AiComposeToneExample.h
   td/telegram/AlarmManager.h
   td/telegram/AnimationsManager.h
   td/telegram/Application.h
@@ -727,6 +732,7 @@ set(TDLIB_SOURCE_PART2
   td/telegram/BotVerifierSettings.h
   td/telegram/BlockListId.h
   td/telegram/BoostManager.h
+  td/telegram/BotAccessSettings.h
   td/telegram/BotCommand.h
   td/telegram/BotCommandScope.h
   td/telegram/BotInfoManager.h
@@ -1133,6 +1139,8 @@ set(TDLIB_SOURCE_PART2
   td/telegram/WebPagesManager.h
 
   td/telegram/AgeVerificationParameters.hpp
+  td/telegram/AiComposeTone.hpp
+  td/telegram/AiComposeToneExample.hpp
   td/telegram/AnimationsManager.hpp
   td/telegram/AudiosManager.hpp
   td/telegram/AuthManager.hpp
