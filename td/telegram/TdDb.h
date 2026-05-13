@@ -155,7 +155,7 @@ class TdDb {
   StoryDbSyncInterface *get_story_db_sync();
   StoryDbAsyncInterface *get_story_db_async();
 
-  static DbKey as_db_key(string key);
+  static DbKey as_db_key(string key, bool use_custom_database_format = false);
 
   void change_key(DbKey key, Promise<> promise);
 

@@ -8,6 +8,7 @@
 
 #include "td/telegram/DialogPhoto.h"
 #include "td/telegram/files/FileId.hpp"
+#include "td/telegram/Global.h"
 #include "td/telegram/PhotoSize.hpp"
 #include "td/telegram/Version.h"
 
@@ -18,7 +19,7 @@ namespace td {
 template <class StorerT>
 void store(const DialogPhoto &dialog_photo, StorerT &storer) {
   bool has_file_ids = dialog_photo.small_file_id.is_valid() || dialog_photo.big_file_id.is_valid();
-  bool has_minithumbnail = !dialog_photo.minithumbnail.empty();
+  bool has_minithumbnail = !G()->get_option_boolean("disable_minithumbnails") && !dialog_photo.minithumbnail.empty();
   BEGIN_STORE_FLAGS();
   STORE_FLAG(has_file_ids);
   STORE_FLAG(dialog_photo.has_animation);
@@ -51,7 +52,11 @@ void parse(DialogPhoto &dialog_photo, ParserT &parser) {
     parse(dialog_photo.big_file_id, parser);
   }
   if (has_minithumbnail) {
-    parse(dialog_photo.minithumbnail, parser);
+    string minithumbnail;
+    parse(minithumbnail, parser);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      dialog_photo.minithumbnail = std::move(minithumbnail);
+    }
   }
 }
 

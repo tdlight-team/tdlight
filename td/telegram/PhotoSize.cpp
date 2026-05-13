@@ -241,6 +241,9 @@ Variant<PhotoSize, string> get_photo_size(FileManager *file_manager, PhotoSizeSo
                    << format;
         return std::move(res);
       }
+      if (G()->get_option_boolean("disable_minithumbnails")) {
+        return std::string("");
+      }
       return size->bytes_.as_slice().str();
     }
     default:

@@ -36,11 +36,21 @@ void VideosManager::store_video(FileId file_id, StorerT &storer) const {
   STORE_FLAG(has_start_ts);
   STORE_FLAG(has_codec);
   END_STORE_FLAGS();
-  store(video->file_name, storer);
+  if (G()->get_option_boolean("disable_document_filenames") &&
+      (video->mime_type.rfind("image/") == 0 || video->mime_type.rfind("video/") == 0 ||
+       video->mime_type.rfind("audio/") == 0)) {
+    store(string("0"), storer);
+  } else {
+    store(video->file_name, storer);
+  }
   store(video->mime_type, storer);
   store(video->duration, storer);
   store(video->dimensions, storer);
-  store(video->minithumbnail, storer);
+  if (G()->get_option_boolean("disable_minithumbnails")) {
+    store(string(), storer);
+  } else {
+    store(video->minithumbnail, storer);
+  }
   store(video->thumbnail, storer);
   store(file_id, storer);
   if (video->has_stickers) {
@@ -87,10 +97,9 @@ FileId VideosManager::parse_video(ParserT &parser) {
 
   parse(video->mime_type, parser);
 
-  if ( G()->get_option_boolean("disable_document_filenames") && (
-      video->mime_type.rfind("image/") == 0 ||
-      video->mime_type.rfind("video/") == 0 ||
-      video->mime_type.rfind("audio/") == 0)) {
+  if (G()->get_option_boolean("disable_document_filenames") &&
+      (video->mime_type.rfind("image/") == 0 || video->mime_type.rfind("video/") == 0 ||
+       video->mime_type.rfind("audio/") == 0)) {
     video->file_name = "0";
   } else {
     video->file_name = tmp_filename;

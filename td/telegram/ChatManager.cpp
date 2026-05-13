@@ -4672,17 +4672,26 @@ class ChatManager::ChannelLogEvent {
 };
 
 void ChatManager::save_channel(Channel *c, ChannelId channel_id, bool from_binlog) {
+  auto send_access_hash = [&] {
+    auto access_hash = get_channel_access_hash_object(channel_id, c);
+    if (access_hash != nullptr) {
+      send_closure(G()->td(), &Td::send_update,
+                   td_api::make_object<td_api::updateAccessHash>(std::move(access_hash)));
+    }
+  };
+
   if (!G()->use_chat_info_database()) {
+    if (td_->option_manager_->get_option_boolean("receive_access_hashes")) {
+      send_access_hash();
+    }
     return;
   }
   CHECK(c != nullptr);
 
-  if (td_->option_manager_->get_option_boolean("receive_access_hashes") && c->access_hash != 0) {
-    send_closure(G()->td(), &Td::send_update,
-                 td_api::make_object<td_api::updateAccessHash>(get_channel_access_hash_object(channel_id, c)));
-  }
-
   if (!c->is_saved) {
+    if (td_->option_manager_->get_option_boolean("receive_access_hashes")) {
+      send_access_hash();
+    }
     if (!from_binlog) {
       auto log_event = ChannelLogEvent(channel_id, c);
       auto storer = get_log_event_storer(log_event);
@@ -9734,7 +9743,7 @@ ActiveStoryState ChatManager::get_channel_active_story_state(const Channel *c) {
 
 td_api::object_ptr<td_api::accessHash> ChatManager::get_channel_access_hash_object(ChannelId channel_id,
                                                                                  const Channel *c) const {
-  if (c == nullptr) {
+  if (c == nullptr || c->access_hash == 0) {
     return nullptr;
   }
   return td_api::make_object<td_api::accessHash>(

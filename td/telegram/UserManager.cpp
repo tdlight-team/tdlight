@@ -4797,17 +4797,26 @@ UserManager::User *UserManager::add_user(UserId user_id) {
 }
 
 void UserManager::save_user(User *u, UserId user_id, bool from_binlog) {
+  auto send_access_hash = [&] {
+    auto access_hash = get_user_access_hash_object(user_id, u);
+    if (access_hash != nullptr) {
+      send_closure(G()->td(), &Td::send_update,
+                   td_api::make_object<td_api::updateAccessHash>(std::move(access_hash)));
+    }
+  };
+
   if (!G()->use_chat_info_database()) {
+    if (td_->option_manager_->get_option_boolean("receive_access_hashes")) {
+      send_access_hash();
+    }
     return;
   }
   CHECK(u != nullptr);
 
-  if (td_->option_manager_->get_option_boolean("receive_access_hashes") && u->access_hash != 0) {
-    send_closure(G()->td(), &Td::send_update,
-                 td_api::make_object<td_api::updateAccessHash>(get_user_access_hash_object(user_id, u)));
-  }
-
   if (!u->is_saved || !u->is_status_saved) {  // TODO more effective handling of !u->is_status_saved
+    if (td_->option_manager_->get_option_boolean("receive_access_hashes")) {
+      send_access_hash();
+    }
     if (!from_binlog) {
       auto log_event = UserLogEvent(user_id, u);
       auto storer = get_log_event_storer(log_event);
@@ -10268,7 +10277,7 @@ td_api::object_ptr<td_api::users> UserManager::get_users_object(int32 total_coun
 
 td_api::object_ptr<td_api::accessHash> UserManager::get_user_access_hash_object(UserId user_id,
                                                                              const User *u) const {
-  if (u == nullptr) {
+  if (u == nullptr || u->is_min_access_hash || u->access_hash == 0) {
     return nullptr;
   }
   return td_api::make_object<td_api::accessHash>(

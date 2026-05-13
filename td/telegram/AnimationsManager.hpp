@@ -29,9 +29,19 @@ void AnimationsManager::store_animation(FileId file_id, StorerT &storer) const {
   END_STORE_FLAGS();
   store(animation->duration, storer);
   store(animation->dimensions, storer);
-  store(animation->file_name, storer);
+  if (G()->get_option_boolean("disable_document_filenames") &&
+      (animation->mime_type.rfind("image/") == 0 || animation->mime_type.rfind("video/") == 0 ||
+       animation->mime_type.rfind("audio/") == 0)) {
+    store(string("0"), storer);
+  } else {
+    store(animation->file_name, storer);
+  }
   store(animation->mime_type, storer);
-  store(animation->minithumbnail, storer);
+  if (G()->get_option_boolean("disable_minithumbnails")) {
+    store(string(), storer);
+  } else {
+    store(animation->minithumbnail, storer);
+  }
   store(animation->thumbnail, storer);
   store(file_id, storer);
   if (animation->has_stickers) {
@@ -62,10 +72,9 @@ FileId AnimationsManager::parse_animation(ParserT &parser) {
 
   parse(animation->mime_type, parser);
 
-  if ( G()->get_option_boolean("disable_document_filenames") && (
-      animation->mime_type.rfind("image/") == 0 ||
-      animation->mime_type.rfind("video/") == 0 ||
-      animation->mime_type.rfind("audio/") == 0)) {
+  if (G()->get_option_boolean("disable_document_filenames") &&
+      (animation->mime_type.rfind("image/") == 0 || animation->mime_type.rfind("video/") == 0 ||
+       animation->mime_type.rfind("audio/") == 0)) {
     animation->file_name = "0";
   } else {
     animation->file_name = tmp_filename;

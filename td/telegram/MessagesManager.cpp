@@ -4385,6 +4385,9 @@ void MessagesManager::on_update_service_notification(tl_object_ptr<telegram_api:
 }
 
 void MessagesManager::on_update_read_channel_inbox(tl_object_ptr<telegram_api::updateReadChannelInbox> &&update) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   ChannelId channel_id(update->channel_id_);
   if (!channel_id.is_valid()) {
     LOG(ERROR) << "Receive invalid " << channel_id << " in updateReadChannelInbox";
@@ -4396,6 +4399,9 @@ void MessagesManager::on_update_read_channel_inbox(tl_object_ptr<telegram_api::u
 }
 
 void MessagesManager::on_update_read_channel_outbox(tl_object_ptr<telegram_api::updateReadChannelOutbox> &&update) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   ChannelId channel_id(update->channel_id_);
   if (!channel_id.is_valid()) {
     LOG(ERROR) << "Receive invalid " << channel_id << " in updateReadChannelOutbox";
@@ -4408,6 +4414,9 @@ void MessagesManager::on_update_read_channel_outbox(tl_object_ptr<telegram_api::
 
 void MessagesManager::on_update_read_channel_messages_contents(
     tl_object_ptr<telegram_api::updateChannelReadMessagesContents> &&update) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   ChannelId channel_id(update->channel_id_);
   if (!channel_id.is_valid()) {
     LOG(ERROR) << "Receive invalid " << channel_id << " in updateChannelReadMessagesContents";
@@ -4437,6 +4446,9 @@ void MessagesManager::on_update_read_channel_messages_contents(
 void MessagesManager::on_update_read_message_comments(DialogId dialog_id, MessageId top_thread_message_id,
                                                       MessageId max_message_id, MessageId last_read_inbox_message_id,
                                                       MessageId last_read_outbox_message_id, int32 unread_count) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   if (td_->auth_manager_->is_bot()) {
     return;
   }
@@ -5345,6 +5357,9 @@ bool MessagesManager::remove_message_unread_poll_votes(Dialog *d, Message *m, co
 
 void MessagesManager::on_read_channel_inbox(ChannelId channel_id, MessageId max_message_id, int32 server_unread_count,
                                             int32 pts, const char *source) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   if (td_->auth_manager_->is_bot()) {
     return;
   }
@@ -5406,6 +5421,9 @@ void MessagesManager::on_update_channel_max_unavailable_message_id(ChannelId cha
 
 void MessagesManager::on_update_delete_scheduled_messages(DialogId dialog_id,
                                                           vector<ScheduledServerMessageId> &&server_message_ids) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   if (td_->auth_manager_->is_bot()) {
     // just in case
     return;
@@ -5670,6 +5688,9 @@ void MessagesManager::process_pts_update(tl_object_ptr<telegram_api::Update> &&u
     case telegram_api::updateReadHistoryInbox::ID: {
       auto update = move_tl_object_as<telegram_api::updateReadHistoryInbox>(update_ptr);
       LOG(INFO) << "Process updateReadHistoryInbox";
+      if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+        break;
+      }
       DialogId dialog_id(update->peer_);
       auto last_read_inbox_message_id = MessageId(ServerMessageId(update->max_id_));
       on_update_dialog_folder_id(dialog_id, FolderId(update->folder_id_));
@@ -5685,6 +5706,9 @@ void MessagesManager::process_pts_update(tl_object_ptr<telegram_api::Update> &&u
     case telegram_api::updateReadHistoryOutbox::ID: {
       auto update = move_tl_object_as<telegram_api::updateReadHistoryOutbox>(update_ptr);
       LOG(INFO) << "Process updateReadHistoryOutbox";
+      if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+        break;
+      }
       read_history_outbox(DialogId(update->peer_), MessageId(ServerMessageId(update->max_id_)));
       break;
     }
@@ -5726,6 +5750,9 @@ bool MessagesManager::process_channel_update(tl_object_ptr<telegram_api::Update>
     case telegram_api::updateDeleteChannelMessages::ID: {
       auto update = move_tl_object_as<telegram_api::updateDeleteChannelMessages>(update_ptr);
       LOG(INFO) << "Process updateDeleteChannelMessages";
+      if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+        break;
+      }
       ChannelId channel_id(update->channel_id_);
       if (!channel_id.is_valid()) {
         LOG(ERROR) << "Receive invalid " << channel_id;
@@ -9122,6 +9149,9 @@ void MessagesManager::read_message_content_from_updates(MessageId message_id, in
 void MessagesManager::read_channel_message_content_from_updates(Dialog *d, MessageId message_id,
                                                                 ForumTopicId forum_topic_id,
                                                                 SavedMessagesTopicId saved_messages_topic_id) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   CHECK(d != nullptr);
   if (!message_id.is_server()) {
     LOG(ERROR) << "Incoming update tries to read content of " << message_id << " in " << d->dialog_id;
@@ -26995,10 +27025,10 @@ void MessagesManager::send_update_chat_read_inbox(const Dialog *d, bool force, c
               << td_->dialog_manager_->get_dialog_title(d->dialog_id) << ") to " << d->server_unread_count << " + "
               << d->local_unread_count << " from " << source;
     if (!G()->get_option_boolean("ignore_update_chat_read_inbox")) {
-    send_closure(G()->td(), &Td::send_update,
-                 td_api::make_object<td_api::updateChatReadInbox>(
-                     get_chat_id_object(d->dialog_id, "updateChatReadInbox"), d->last_read_inbox_message_id.get(),
-                     d->server_unread_count + d->local_unread_count));
+      send_closure(G()->td(), &Td::send_update,
+                   td_api::make_object<td_api::updateChatReadInbox>(
+                       get_chat_id_object(d->dialog_id, "updateChatReadInbox"), d->last_read_inbox_message_id.get(),
+                       d->server_unread_count + d->local_unread_count));
     }
   }
 }

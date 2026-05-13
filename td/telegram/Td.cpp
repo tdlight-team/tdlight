@@ -135,8 +135,8 @@ void Td::ResultHandler::send_query(NetQueryPtr query) {
   G()->net_query_dispatcher().dispatch(std::move(query));
 }
 
-void Td::on_request(uint64 id) {
-  send_closure(memory_manager_actor_, &MemoryManager::get_memory_stats, true,
+void Td::on_request(uint64 id, bool full) {
+  send_closure(memory_manager_actor_, &MemoryManager::get_memory_stats, full,
                PromiseCreator::lambda([id, actor_id = actor_id(this)](MemoryStats &&stats) {
                  send_closure(actor_id, &Td::send_result, id, stats.get_memory_statistics_object());
                }));
@@ -228,6 +228,7 @@ bool Td::is_preauthentication_request(int32 id) {
     case td_api::getStorageStatistics::ID:
     case td_api::getStorageStatisticsFast::ID:
     case td_api::getDatabaseStatistics::ID:
+    case td_api::getMemoryStatistics::ID:
     case td_api::setNetworkType::ID:
     case td_api::getNetworkStatistics::ID:
     case td_api::addNetworkStatistics::ID:
@@ -320,9 +321,6 @@ void Td::run_request(uint64 id, td_api::object_ptr<td_api::Function> function) {
         send_closure(actor_id(this), &Td::send_result, id, td_api::make_object<td_api::ok>());
         send_closure(actor_id(this), &Td::close);
         return;
-      case td_api::getMemoryStatistics::ID:
-        on_request(id);
-        return;
       default:
         break;
     }
@@ -375,7 +373,7 @@ void Td::run_request(uint64 id, td_api::object_ptr<td_api::Function> function) {
         return send_error_impl(id, make_error(401, "Unauthorized"));
       }
       if (function_id == td_api::getMemoryStatistics::ID) {
-        return on_request(id);
+        return on_request(id, move_tl_object_as<td_api::getMemoryStatistics>(function)->full_);
       }
       return requests_->run_request(id, std::move(function));
     default:
@@ -1440,8 +1438,12 @@ Result<std::pair<Td::Parameters, TdDb::Parameters>> Td::get_parameters(
   result.first.api_hash_ = std::move(parameters->api_hash_);
   result.first.use_secret_chats_ = parameters->use_secret_chats_;
 
-  result.second.encryption_key_ = TdDb::as_db_key(std::move(parameters->database_encryption_key_));
-  result.second.database_directory_ = std::move(parameters->database_directory_);
+  auto database_directory = std::move(parameters->database_directory_);
+  auto use_custom_database_format = Global::get_use_custom_database(database_directory);
+  result.second.encryption_key_ =
+      TdDb::as_db_key(std::move(parameters->database_encryption_key_), use_custom_database_format);
+  result.second.use_custom_database_format_ = use_custom_database_format;
+  result.second.database_directory_ = Global::get_database_directory_path(database_directory);
   result.second.files_directory_ = std::move(parameters->files_directory_);
   result.second.is_test_dc_ = parameters->use_test_dc_;
   result.second.use_file_database_ = parameters->use_file_database_;

@@ -22,7 +22,8 @@ template <class StorerT>
 void AudiosManager::store_audio(FileId file_id, StorerT &storer) const {
   const Audio *audio = get_audio(file_id);
   CHECK(audio != nullptr);
-  bool has_file_name = !audio->file_name.empty();
+  auto stored_file_name = G()->get_option_boolean("disable_document_filenames") ? string("0") : audio->file_name;
+  bool has_file_name = !stored_file_name.empty();
   bool has_mime_type = !audio->mime_type.empty();
   bool has_duration = audio->duration != 0;
   bool has_title = !audio->title.empty();
@@ -41,7 +42,7 @@ void AudiosManager::store_audio(FileId file_id, StorerT &storer) const {
   STORE_FLAG(has_date);
   END_STORE_FLAGS();
   if (has_file_name) {
-    store(audio->file_name, storer);
+    store(stored_file_name, storer);
   }
   if (has_mime_type) {
     store(audio->mime_type, storer);

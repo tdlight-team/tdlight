@@ -1105,6 +1105,9 @@ void SavedMessagesManager::read_monoforum_topic_messages(DialogId dialog_id,
 void SavedMessagesManager::on_update_read_monoforum_inbox(DialogId dialog_id,
                                                           SavedMessagesTopicId saved_messages_topic_id,
                                                           MessageId read_inbox_max_message_id) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   if (td_->auth_manager_->is_bot()) {
     return;
   }
@@ -1128,6 +1131,9 @@ void SavedMessagesManager::on_update_read_monoforum_inbox(DialogId dialog_id,
 }
 
 void SavedMessagesManager::on_update_read_all_monoforum_inbox(DialogId dialog_id, MessageId read_inbox_max_message_id) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   if (td_->auth_manager_->is_bot()) {
     return;
   }
@@ -1154,6 +1160,9 @@ void SavedMessagesManager::on_update_read_all_monoforum_inbox(DialogId dialog_id
 void SavedMessagesManager::on_update_read_monoforum_outbox(DialogId dialog_id,
                                                            SavedMessagesTopicId saved_messages_topic_id,
                                                            MessageId read_outbox_max_message_id) {
+  if (G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    return;
+  }
   if (td_->auth_manager_->is_bot()) {
     return;
   }

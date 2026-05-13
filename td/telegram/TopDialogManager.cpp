@@ -488,6 +488,10 @@ void TopDialogManager::on_load_dialogs(GetTopDialogsQuery &&query, vector<Dialog
 }
 
 void TopDialogManager::do_get_top_peers() {
+  if (!is_enabled_) {
+    return;
+  }
+
   std::vector<uint64> peer_ids;
   for (auto &category : by_category_) {
     for (auto &top_dialog : category.dialogs) {
@@ -515,6 +519,11 @@ void TopDialogManager::do_get_top_peers() {
 }
 
 void TopDialogManager::on_get_top_peers(Result<telegram_api::object_ptr<telegram_api::contacts_TopPeers>> result) {
+  if (!is_enabled_) {
+    server_sync_state_ = SyncState::None;
+    return;
+  }
+
   normalize_rating();  // once a day too
 
   if (result.is_error()) {
@@ -693,6 +702,11 @@ void TopDialogManager::loop() {
       do_get_top_dialogs(std::move(query));
     }
     pending_get_top_dialogs_.clear();
+  }
+
+  if (!is_enabled_) {
+    cancel_timeout();
+    return;
   }
 
   // server sync

@@ -429,7 +429,7 @@ class Td final : public Actor {
 
   static bool is_preauthentication_request(int32 id);
 
-  void on_request(uint64 id);
+  void on_request(uint64 id, bool full);
 
   struct Parameters {
     int32 api_id_ = 0;

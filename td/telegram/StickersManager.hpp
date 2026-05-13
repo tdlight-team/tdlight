@@ -29,7 +29,7 @@ void StickersManager::store_sticker(FileId file_id, bool in_sticker_set, StorerT
   const Sticker *sticker = get_sticker(file_id);
   LOG_CHECK(sticker != nullptr) << file_id << ' ' << in_sticker_set << ' ' << source;
   bool has_sticker_set_access_hash = sticker->set_id_.is_valid() && !in_sticker_set;
-  bool has_minithumbnail = !sticker->minithumbnail_.empty();
+  bool has_minithumbnail = !G()->get_option_boolean("disable_minithumbnails") && !sticker->minithumbnail_.empty();
   bool is_tgs = sticker->format_ == StickerFormat::Tgs;
   bool is_webm = sticker->format_ == StickerFormat::Webm;
   bool has_premium_animation = sticker->premium_animation_file_id_.is_valid();
@@ -149,7 +149,11 @@ FileId StickersManager::parse_sticker(bool in_sticker_set, ParserT &parser) {
     parse(sticker->mask_position_, parser);
   }
   if (has_minithumbnail) {
-    parse(sticker->minithumbnail_, parser);
+    string minithumbnail;
+    parse(minithumbnail, parser);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      sticker->minithumbnail_ = std::move(minithumbnail);
+    }
   }
   if (has_premium_animation) {
     sticker->is_premium_ = true;
@@ -176,7 +180,8 @@ void StickersManager::store_sticker_set(const StickerSet *sticker_set, bool with
   bool is_loaded = sticker_set->is_loaded_ && is_full;
   bool has_expires_at = !sticker_set->is_installed_ && sticker_set->expires_at_ != 0;
   bool has_thumbnail = sticker_set->thumbnail_.file_id.is_valid();
-  bool has_minithumbnail = !sticker_set->minithumbnail_.empty();
+  bool has_minithumbnail =
+      !G()->get_option_boolean("disable_minithumbnails") && !sticker_set->minithumbnail_.empty();
   bool is_masks = sticker_set->sticker_type_ == StickerType::Mask;
   bool is_emojis = sticker_set->sticker_type_ == StickerType::CustomEmoji;
   bool has_thumbnail_document_id = sticker_set->thumbnail_document_id_ != 0;
@@ -354,7 +359,9 @@ void StickersManager::parse_sticker_set(StickerSet *sticker_set, ParserT &parser
     if (!was_inited) {
       sticker_set->title_ = std::move(title);
       sticker_set->short_name_ = std::move(short_name);
-      sticker_set->minithumbnail_ = std::move(minithumbnail);
+      if (!G()->get_option_boolean("disable_minithumbnails")) {
+        sticker_set->minithumbnail_ = std::move(minithumbnail);
+      }
       sticker_set->thumbnail_ = std::move(thumbnail);
       sticker_set->thumbnail_document_id_ = thumbnail_document_id;
       sticker_set->sticker_count_ = sticker_count;
@@ -373,7 +380,8 @@ void StickersManager::parse_sticker_set(StickerSet *sticker_set, ParserT &parser
       }
       on_update_sticker_set(sticker_set, is_installed, is_archived, false, true);
     } else {
-      if (sticker_set->title_ != title || sticker_set->minithumbnail_ != minithumbnail ||
+      if (sticker_set->title_ != title ||
+          (!G()->get_option_boolean("disable_minithumbnails") && sticker_set->minithumbnail_ != minithumbnail) ||
           sticker_set->thumbnail_ != thumbnail || sticker_set->thumbnail_document_id_ != thumbnail_document_id ||
           sticker_set->is_official_ != is_official || sticker_set->has_text_color_ != has_text_color ||
           sticker_set->channel_emoji_status_ != channel_emoji_status || sticker_set->is_created_ != is_created ||

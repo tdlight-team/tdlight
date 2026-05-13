@@ -2060,7 +2060,7 @@ Promise<SentEmailCode> Requests::create_sent_email_code_request_promise(uint64 i
   auto promise = create_sent_email_code_request_promise(id)
 
 void Requests::on_request(uint64 id, const td_api::getMemoryStatistics &request) {
-  send_closure(td_->actor_id(td_), &Td::on_request, id);
+  send_closure(td_->actor_id(td_), &Td::on_request, id, request.full_);
 }
 
 void Requests::on_request(uint64 id, const td_api::setTdlibParameters &request) {
@@ -2069,7 +2069,8 @@ void Requests::on_request(uint64 id, const td_api::setTdlibParameters &request) 
 
 void Requests::on_request(uint64 id, td_api::setDatabaseEncryptionKey &request) {
   CREATE_OK_REQUEST_PROMISE();
-  G()->td_db()->get_binlog()->change_key(TdDb::as_db_key(std::move(request.new_encryption_key_)), std::move(promise));
+  G()->td_db()->get_binlog()->change_key(
+      TdDb::as_db_key(std::move(request.new_encryption_key_), G()->use_custom_database_format()), std::move(promise));
 }
 
 void Requests::on_request(uint64 id, const td_api::getAuthorizationState &request) {

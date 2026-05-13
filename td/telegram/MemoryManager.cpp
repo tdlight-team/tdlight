@@ -12,6 +12,7 @@
 
 #include "td/telegram/AccessRights.h"
 #include "td/telegram/AuthManager.h"
+#include "td/telegram/ChatManager.h"
 #include "td/telegram/ConfigManager.h"
 #include "td/telegram/DialogId.h"
 #include "td/telegram/Document.h"
@@ -39,6 +40,7 @@
 #include "td/telegram/net/MtprotoHeader.h"
 #include "td/telegram/Td.h"
 #include "td/telegram/TdDb.h"
+#include "td/telegram/UserManager.h"
 
 #include "td/actor/MultiPromise.h"
 #include "td/actor/PromiseFuture.h"
@@ -84,13 +86,30 @@ void MemoryManager::get_memory_stats(bool full, Promise<MemoryStats> promise) {
 
   output.push_back("\"memory_stats\":{");
 
+  if (!full) {
+    output.push_back("}");
+    output.push_back("}");
+
+    string s;
+    s = accumulate(output.begin(), output.end(), s);
+    promise.set_value(MemoryStats(s));
+    return;
+  }
+
   output.push_back("\"messages_manager_\":{");
   td_->messages_manager_->memory_stats(output);
   output.push_back("}");
 
   output.push_back(",");
 
-  output.push_back("\"contacts_manager_\":{");
+  output.push_back("\"user_manager_\":{");
+  td_->user_manager_->memory_stats(output);
+  output.push_back("}");
+
+  output.push_back(",");
+
+  output.push_back("\"chat_manager_\":{");
+  td_->chat_manager_->memory_stats(output);
   output.push_back("}");
 
   output.push_back(",");

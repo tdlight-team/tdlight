@@ -120,8 +120,6 @@ FileId VideosManager::on_get_video(unique_ptr<Video> new_video, bool replace) {
       LOG(DEBUG) << "Video " << file_id << " info has changed";
       v->mime_type = std::move(new_video->mime_type);
       v->file_name = std::move(new_video->file_name);
-      v->thumbnail = std::move(new_video->thumbnail);
-      v->animated_thumbnail = std::move(new_video->animated_thumbnail);
       v->duration = new_video->duration;
       v->precise_duration = new_video->precise_duration;
       v->dimensions = new_video->dimensions;

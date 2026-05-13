@@ -1984,7 +1984,7 @@ GroupCallManager::GroupCallManager(Td *td, ActorShared<> parent) : td_(td), pare
   poll_group_call_stars_timeout_.set_callback(on_poll_group_call_stars_timeout_callback);
   poll_group_call_stars_timeout_.set_callback_data(static_cast<void *>(this));
 
-  if (!td_->auth_manager_->is_bot()) {
+  if (!td_->auth_manager_->is_bot() && !G()->get_option_boolean("disable_group_calls")) {
     auto status = log_event_parse(message_limits_, G()->td_db()->get_binlog_pmc()->get("group_call_message_limits"));
     if (status.is_error()) {
       message_limits_ = GroupCallMessageLimits::basic();
@@ -3255,7 +3255,7 @@ GroupCallParticipant *GroupCallManager::get_group_call_participant(GroupCallPart
 void GroupCallManager::on_update_group_call_participants(
     InputGroupCallId input_group_call_id, vector<tl_object_ptr<telegram_api::groupCallParticipant>> &&participants,
     int32 version, bool is_recursive) {
-  if (G()->close_flag()) {
+  if (G()->close_flag() || G()->get_option_boolean("disable_group_calls")) {
     return;
   }
 
@@ -3593,10 +3593,12 @@ void GroupCallManager::add_group_call_spent_stars(InputGroupCallId input_group_c
     }
   }
   if (is_reaction) {
-    send_closure(G()->td(), &Td::send_update,
-                 td_api::make_object<td_api::updateNewGroupCallPaidReaction>(
-                     group_call->group_call_id.get(),
-                     get_message_sender_object(td_, sender_dialog_id, "updateNewGroupCallPaidReaction"), star_count));
+    if (!G()->get_option_boolean("disable_group_calls")) {
+      send_closure(G()->td(), &Td::send_update,
+                   td_api::make_object<td_api::updateNewGroupCallPaidReaction>(
+                       group_call->group_call_id.get(),
+                       get_message_sender_object(td_, sender_dialog_id, "updateNewGroupCallPaidReaction"), star_count));
+    }
   }
 }
 
@@ -3639,7 +3641,7 @@ int32 GroupCallManager::add_group_call_message(InputGroupCallId input_group_call
         group_call_message, get_group_call_message_delete_in(group_call, group_call_message, is_old));
     if (message_id == 0) {
       LOG(INFO) << "Skip duplicate " << group_call_message;
-    } else {
+    } else if (!G()->get_option_boolean("disable_group_calls")) {
       send_closure(G()->td(), &Td::send_update,
                    td_api::make_object<td_api::updateNewGroupCallMessage>(
                        group_call->group_call_id.get(),
@@ -3673,7 +3675,7 @@ void GroupCallManager::apply_old_server_messages(InputGroupCallId input_group_ca
 }
 
 void GroupCallManager::on_group_call_messages_deleted(const GroupCall *group_call, vector<int32> &&message_ids) {
-  if (!message_ids.empty()) {
+  if (!message_ids.empty() && !G()->get_option_boolean("disable_group_calls")) {
     send_closure(G()->td(), &Td::send_update,
                  td_api::make_object<td_api::updateGroupCallMessagesDeleted>(group_call->group_call_id.get(),
                                                                              std::move(message_ids)));
@@ -3706,7 +3708,7 @@ void GroupCallManager::on_group_call_message_sending_failed(InputGroupCallId inp
   if (paid_message_star_count > 0 && group_call->is_live_story) {
     remove_group_call_spent_stars(input_group_call_id, group_call, paid_message_star_count);
   }
-  if (group_call->messages.has_message(message_id)) {
+  if (group_call->messages.has_message(message_id) && !G()->get_option_boolean("disable_group_calls")) {
     send_closure(G()->td(), &Td::send_update,
                  td_api::make_object<td_api::updateGroupCallMessageSendFailed>(
                      group_call->group_call_id.get(), message_id,
@@ -3719,7 +3721,7 @@ void GroupCallManager::on_group_call_message_sending_failed(InputGroupCallId inp
 
 void GroupCallManager::on_new_group_call_message(InputGroupCallId input_group_call_id,
                                                  telegram_api::object_ptr<telegram_api::groupCallMessage> &&message) {
-  if (G()->close_flag()) {
+  if (G()->close_flag() || G()->get_option_boolean("disable_group_calls")) {
     return;
   }
   auto group_call = get_group_call(input_group_call_id);
@@ -3745,7 +3747,7 @@ void GroupCallManager::on_new_group_call_message(InputGroupCallId input_group_ca
 
 void GroupCallManager::on_new_encrypted_group_call_message(InputGroupCallId input_group_call_id,
                                                            DialogId sender_dialog_id, string &&encrypted_message) {
-  if (G()->close_flag()) {
+  if (G()->close_flag() || G()->get_option_boolean("disable_group_calls")) {
     return;
   }
   auto group_call = get_group_call(input_group_call_id);
@@ -3780,7 +3782,7 @@ void GroupCallManager::on_new_encrypted_group_call_message(InputGroupCallId inpu
 
 void GroupCallManager::on_update_group_call_messages_deleted(InputGroupCallId input_group_call_id,
                                                              vector<int32> &&server_ids) {
-  if (G()->close_flag()) {
+  if (G()->close_flag() || G()->get_option_boolean("disable_group_calls")) {
     return;
   }
   auto group_call = get_group_call(input_group_call_id);
@@ -6284,7 +6286,7 @@ td_api::object_ptr<td_api::liveStoryDonors> GroupCallManager::get_live_story_don
 
 void GroupCallManager::send_update_live_story_top_donors(GroupCallId group_call_id,
                                                          const GroupCallParticipants *group_call_participants) {
-  if (td_->auth_manager_->is_bot()) {
+  if (td_->auth_manager_->is_bot() || G()->get_option_boolean("disable_group_calls")) {
     return;
   }
   send_closure(G()->td(), &Td::send_update,
@@ -7209,9 +7211,12 @@ void GroupCallManager::clear_group_call(GroupCall *group_call) {
     tde2e_api::call_destroy(group_call->call_id);
     set_blockchain_participant_ids(group_call, {});
     if (!get_emojis_fingerprint(group_call).empty()) {
-      send_closure(G()->td(), &Td::send_update,
-                   td_api::make_object<td_api::updateGroupCallVerificationState>(
-                       group_call->group_call_id.get(), group_call->call_verification_state.height, vector<string>()));
+      if (!G()->get_option_boolean("disable_group_calls")) {
+        send_closure(G()->td(), &Td::send_update,
+                     td_api::make_object<td_api::updateGroupCallVerificationState>(
+                         group_call->group_call_id.get(), group_call->call_verification_state.height,
+                         vector<string>()));
+      }
     }
 
     group_call->private_key_id = {};
@@ -7280,6 +7285,9 @@ void GroupCallManager::discard_group_call(GroupCallId group_call_id, Promise<Uni
 }
 
 void GroupCallManager::on_update_group_call_connection(string &&connection_params) {
+  if (G()->get_option_boolean("disable_group_calls")) {
+    return;
+  }
   if (!pending_group_call_join_params_.empty()) {
     LOG(ERROR) << "Receive duplicate connection params";
   }
@@ -7387,7 +7395,7 @@ void GroupCallManager::on_poll_group_call_blocks(InputGroupCallId input_group_ca
 
 InputGroupCallId GroupCallManager::on_update_group_call(
     telegram_api::object_ptr<telegram_api::GroupCall> group_call_ptr, DialogId dialog_id, bool is_live_story) {
-  if (td_->auth_manager_->is_bot()) {
+  if (td_->auth_manager_->is_bot() || G()->get_option_boolean("disable_group_calls")) {
     return {};
   }
   if (dialog_id != DialogId() && !dialog_id.is_valid()) {
@@ -7404,6 +7412,9 @@ InputGroupCallId GroupCallManager::on_update_group_call(
 }
 
 void GroupCallManager::on_update_group_call_message_limits(telegram_api::object_ptr<telegram_api::JSONValue> limits) {
+  if (G()->get_option_boolean("disable_group_calls")) {
+    return;
+  }
   GroupCallMessageLimits new_limits(std::move(limits));
   if (message_limits_ == new_limits) {
     return;
@@ -7476,6 +7487,9 @@ bool GroupCallManager::try_clear_group_call_participants(InputGroupCallId input_
 InputGroupCallId GroupCallManager::update_group_call(const tl_object_ptr<telegram_api::GroupCall> &group_call_ptr,
                                                      DialogId dialog_id, bool is_live_story) {
   CHECK(group_call_ptr != nullptr);
+  if (G()->get_option_boolean("disable_group_calls")) {
+    return {};
+  }
 
   InputGroupCallId input_group_call_id;
   GroupCall call;
@@ -8122,9 +8136,11 @@ void GroupCallManager::set_blockchain_participant_ids(GroupCall *group_call, vec
       td_->user_manager_->have_user_force(user_id, "on_call_state_updated");
     }
   }
-  send_closure(G()->td(), &Td::send_update,
-               td_api::make_object<td_api::updateGroupCallParticipants>(group_call->group_call_id.get(),
-                                                                        std::move(participant_ids)));
+  if (!G()->get_option_boolean("disable_group_calls")) {
+    send_closure(G()->td(), &Td::send_update,
+                 td_api::make_object<td_api::updateGroupCallParticipants>(group_call->group_call_id.get(),
+                                                                          std::move(participant_ids)));
+  }
 }
 
 vector<string> GroupCallManager::get_emojis_fingerprint(const GroupCall *group_call) {
@@ -8149,9 +8165,11 @@ void GroupCallManager::on_call_verification_state_updated(GroupCall *group_call)
     return;
   }
   group_call->call_verification_state = std::move(state);
-  send_closure(G()->td(), &Td::send_update,
-               td_api::make_object<td_api::updateGroupCallVerificationState>(
-                   group_call->group_call_id.get(), state.height, get_emojis_fingerprint(group_call)));
+  if (!G()->get_option_boolean("disable_group_calls")) {
+    send_closure(G()->td(), &Td::send_update,
+                 td_api::make_object<td_api::updateGroupCallVerificationState>(
+                     group_call->group_call_id.get(), state.height, get_emojis_fingerprint(group_call)));
+  }
 }
 
 void GroupCallManager::send_outbound_group_call_blockchain_messages(GroupCall *group_call) {
@@ -8331,7 +8349,7 @@ void GroupCallManager::unregister_group_call(MessageFullId message_full_id, cons
 }
 
 void GroupCallManager::get_current_state(vector<td_api::object_ptr<td_api::Update>> &updates) const {
-  if (td_->auth_manager_->is_bot()) {
+  if (td_->auth_manager_->is_bot() || G()->get_option_boolean("disable_group_calls")) {
     return;
   }
 

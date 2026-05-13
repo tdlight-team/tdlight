@@ -23,11 +23,13 @@ static td_api::object_ptr<td_api::autoDownloadSettings> convert_auto_download_se
   CHECK(settings != nullptr);
   constexpr int32 MAX_PHOTO_SIZE = 10 * (1 << 20) /* 10 MB */;
   constexpr int64 MAX_DOCUMENT_SIZE = (static_cast<int64>(1) << 52);
+  auto is_disabled = G()->get_option_boolean("disable_auto_download");
   return td_api::make_object<td_api::autoDownloadSettings>(
-      !settings->disabled_, clamp(settings->photo_size_max_, static_cast<int32>(0), MAX_PHOTO_SIZE),
+      !is_disabled && !settings->disabled_, clamp(settings->photo_size_max_, static_cast<int32>(0), MAX_PHOTO_SIZE),
       clamp(settings->video_size_max_, static_cast<int64>(0), MAX_DOCUMENT_SIZE),
       clamp(settings->file_size_max_, static_cast<int64>(0), MAX_DOCUMENT_SIZE), settings->video_upload_maxbitrate_,
-      settings->video_preload_large_, settings->audio_preload_next_, settings->stories_preload_,
+      !is_disabled && settings->video_preload_large_, !is_disabled && settings->audio_preload_next_,
+      !is_disabled && settings->stories_preload_,
       settings->phonecalls_less_data_);
 }
 

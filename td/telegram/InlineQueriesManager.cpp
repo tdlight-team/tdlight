@@ -1569,29 +1569,43 @@ tl_object_ptr<td_api::SpeechRecognitionResult> copy(const td_api::SpeechRecognit
   return nullptr;
 }
 
+static string copy_file_name(const string &file_name, const string &mime_type) {
+  if (G()->get_option_boolean("disable_document_filenames") &&
+      (mime_type.rfind("image/") == 0 || mime_type.rfind("video/") == 0 || mime_type.rfind("audio/") == 0)) {
+    return "0";
+  }
+  return file_name;
+}
+
+static tl_object_ptr<td_api::minithumbnail> copy_minithumbnail(const td_api::object_ptr<td_api::minithumbnail> &obj) {
+  return G()->get_option_boolean("disable_minithumbnails") ? nullptr : copy(obj);
+}
+
 template <>
 tl_object_ptr<td_api::animation> copy(const td_api::animation &obj) {
-  return td_api::make_object<td_api::animation>(obj.duration_, obj.width_, obj.height_, obj.file_name_, obj.mime_type_,
-                                                obj.has_stickers_, copy(obj.minithumbnail_), copy(obj.thumbnail_),
-                                                copy(obj.animation_));
+  return td_api::make_object<td_api::animation>(
+      obj.duration_, obj.width_, obj.height_, copy_file_name(obj.file_name_, obj.mime_type_), obj.mime_type_,
+      obj.has_stickers_, copy_minithumbnail(obj.minithumbnail_), copy(obj.thumbnail_), copy(obj.animation_));
 }
 
 template <>
 tl_object_ptr<td_api::audio> copy(const td_api::audio &obj) {
-  return td_api::make_object<td_api::audio>(obj.duration_, obj.title_, obj.performer_, obj.file_name_, obj.mime_type_,
-                                            copy(obj.album_cover_minithumbnail_), copy(obj.album_cover_thumbnail_),
-                                            transform(obj.external_album_covers_, copy_thumbnail), copy(obj.audio_));
+  return td_api::make_object<td_api::audio>(
+      obj.duration_, obj.title_, obj.performer_, copy_file_name(obj.file_name_, obj.mime_type_), obj.mime_type_,
+      copy_minithumbnail(obj.album_cover_minithumbnail_), copy(obj.album_cover_thumbnail_),
+      transform(obj.external_album_covers_, copy_thumbnail), copy(obj.audio_));
 }
 
 template <>
 tl_object_ptr<td_api::document> copy(const td_api::document &obj) {
-  return td_api::make_object<td_api::document>(obj.file_name_, obj.mime_type_, copy(obj.minithumbnail_),
-                                               copy(obj.thumbnail_), copy(obj.document_));
+  return td_api::make_object<td_api::document>(
+      copy_file_name(obj.file_name_, obj.mime_type_), obj.mime_type_, copy_minithumbnail(obj.minithumbnail_),
+      copy(obj.thumbnail_), copy(obj.document_));
 }
 
 template <>
 tl_object_ptr<td_api::photo> copy(const td_api::photo &obj) {
-  return td_api::make_object<td_api::photo>(obj.has_stickers_, copy(obj.minithumbnail_),
+  return td_api::make_object<td_api::photo>(obj.has_stickers_, copy_minithumbnail(obj.minithumbnail_),
                                             transform(obj.sizes_, copy_photo_size));
 }
 
@@ -1604,9 +1618,10 @@ tl_object_ptr<td_api::sticker> copy(const td_api::sticker &obj) {
 
 template <>
 tl_object_ptr<td_api::video> copy(const td_api::video &obj) {
-  return td_api::make_object<td_api::video>(obj.duration_, obj.width_, obj.height_, obj.file_name_, obj.mime_type_,
-                                            obj.has_stickers_, obj.supports_streaming_, copy(obj.minithumbnail_),
-                                            copy(obj.thumbnail_), copy(obj.video_));
+  return td_api::make_object<td_api::video>(
+      obj.duration_, obj.width_, obj.height_, copy_file_name(obj.file_name_, obj.mime_type_), obj.mime_type_,
+      obj.has_stickers_, obj.supports_streaming_, copy_minithumbnail(obj.minithumbnail_), copy(obj.thumbnail_),
+      copy(obj.video_));
 }
 
 template <>

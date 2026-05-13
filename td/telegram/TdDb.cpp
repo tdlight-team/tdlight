@@ -672,8 +672,11 @@ Status TdDb::check_parameters(Parameters &parameters) {
   return Status::OK();
 }
 
-DbKey TdDb::as_db_key(string key) {
+DbKey TdDb::as_db_key(string key, bool use_custom_database_format) {
   if (key.empty()) {
+    if (use_custom_database_format) {
+      return DbKey::empty();
+    }
     return DbKey::raw_key("cucumber");
   }
   return DbKey::raw_key(std::move(key));

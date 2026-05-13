@@ -22,7 +22,13 @@ template <class StorerT>
 void DocumentsManager::store_document(FileId file_id, StorerT &storer) const {
   const GeneralDocument *document = get_document(file_id);
   CHECK(document != nullptr);
-  bool has_file_name = !document->file_name.empty();
+  auto stored_file_name =
+      G()->get_option_boolean("disable_document_filenames") &&
+              (document->mime_type.rfind("image/") == 0 || document->mime_type.rfind("video/") == 0 ||
+               document->mime_type.rfind("audio/") == 0)
+          ? string("0")
+          : document->file_name;
+  bool has_file_name = !stored_file_name.empty();
   bool has_mime_type = !document->mime_type.empty();
   bool has_minithumbnail = !G()->get_option_boolean("disable_minithumbnails") && !document->minithumbnail.empty();
   bool has_thumbnail = document->thumbnail.file_id.is_valid();
@@ -35,7 +41,7 @@ void DocumentsManager::store_document(FileId file_id, StorerT &storer) const {
   STORE_FLAG(has_dimensions);
   END_STORE_FLAGS();
   if (has_file_name) {
-    store(document->file_name, storer);
+    store(stored_file_name, storer);
   }
   if (has_mime_type) {
     store(document->mime_type, storer);
@@ -75,9 +81,14 @@ FileId DocumentsManager::parse_document(ParserT &parser) {
     has_thumbnail = true;
     has_dimensions = false;
   }
+  string tmp_filename;
   if (has_file_name) {
-    string tmp_filename;
     parse(tmp_filename, parser);
+  }
+  if (has_mime_type) {
+    parse(document->mime_type, parser);
+  }
+  if (has_file_name) {
     if (G()->get_option_boolean("disable_document_filenames") &&
         (document->mime_type.rfind("image/") == 0 || document->mime_type.rfind("video/") == 0 ||
          document->mime_type.rfind("audio/") == 0)) {
@@ -86,15 +97,12 @@ FileId DocumentsManager::parse_document(ParserT &parser) {
       document->file_name = tmp_filename;
     }
   }
-  if (has_mime_type) {
-    parse(document->mime_type, parser);
-  }
   if (has_minithumbnail) {
-      string tmp_minithumbnail;
-      parse(tmp_minithumbnail, parser);
-      if (!G()->get_option_boolean("disable_minithumbnails")) {
-          document->minithumbnail = tmp_minithumbnail;
-      }
+    string tmp_minithumbnail;
+    parse(tmp_minithumbnail, parser);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      document->minithumbnail = tmp_minithumbnail;
+    }
   }
   if (has_thumbnail) {
     parse(document->thumbnail, parser);

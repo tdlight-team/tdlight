@@ -2114,6 +2114,9 @@ CustomEmojiId StickersManager::get_custom_emoji_id(FileId sticker_id) const {
 
 td_api::object_ptr<td_api::outline> StickersManager::get_sticker_outline_object(FileId file_id, bool for_animated_emoji,
                                                                                 bool for_clicked_animated_emoji) const {
+  if (G()->get_option_boolean("disable_minithumbnails")) {
+    return nullptr;
+  }
   const auto *sticker = get_sticker(file_id);
   if (sticker == nullptr || sticker->minithumbnail_.empty()) {
     return nullptr;
@@ -2143,6 +2146,9 @@ td_api::object_ptr<td_api::outline> StickersManager::get_sticker_outline_object(
 
 string StickersManager::get_sticker_outline_svg_path(FileId file_id, bool for_animated_emoji,
                                                      bool for_clicked_animated_emoji) const {
+  if (G()->get_option_boolean("disable_minithumbnails")) {
+    return string();
+  }
   const auto *sticker = get_sticker(file_id);
   if (sticker == nullptr || sticker->minithumbnail_.empty()) {
     return string();
@@ -2419,8 +2425,10 @@ tl_object_ptr<td_api::stickerSet> StickersManager::get_sticker_set_object(Sticke
   return td_api::make_object<td_api::stickerSet>(
       sticker_set->id_.get(), sticker_set->title_, sticker_set->short_name_,
       get_sticker_set_thumbnail_object(sticker_set),
-      get_outline_object(sticker_set->minithumbnail_, get_sticker_set_minithumbnail_zoom(sticker_set),
-                         PSLICE() << sticker_set->id_),
+      G()->get_option_boolean("disable_minithumbnails")
+          ? nullptr
+          : get_outline_object(sticker_set->minithumbnail_, get_sticker_set_minithumbnail_zoom(sticker_set),
+                               PSLICE() << sticker_set->id_),
       sticker_set->is_created_, sticker_set->is_installed_ && !sticker_set->is_archived_, sticker_set->is_archived_,
       sticker_set->is_official_, get_sticker_type_object(sticker_set->sticker_type_), sticker_set->has_text_color_,
       sticker_set->channel_emoji_status_, sticker_set->is_viewed_, std::move(stickers), std::move(emojis));
@@ -2495,8 +2503,10 @@ tl_object_ptr<td_api::stickerSetInfo> StickersManager::get_sticker_set_info_obje
   return make_tl_object<td_api::stickerSetInfo>(
       sticker_set->id_.get(), sticker_set->title_, sticker_set->short_name_,
       get_sticker_set_thumbnail_object(sticker_set),
-      get_outline_object(sticker_set->minithumbnail_, get_sticker_set_minithumbnail_zoom(sticker_set),
-                         PSLICE() << sticker_set->id_),
+      G()->get_option_boolean("disable_minithumbnails")
+          ? nullptr
+          : get_outline_object(sticker_set->minithumbnail_, get_sticker_set_minithumbnail_zoom(sticker_set),
+                               PSLICE() << sticker_set->id_),
       sticker_set->is_created_, sticker_set->is_installed_ && !sticker_set->is_archived_, sticker_set->is_archived_,
       sticker_set->is_official_, get_sticker_type_object(sticker_set->sticker_type_), sticker_set->has_text_color_,
       sticker_set->channel_emoji_status_, sticker_set->is_viewed_,
@@ -2887,9 +2897,10 @@ FileId StickersManager::on_get_sticker(unique_ptr<Sticker> new_sticker, bool rep
       s->alt_ = std::move(new_sticker->alt_);
       is_changed = true;
     }
-    if (s->minithumbnail_ != new_sticker->minithumbnail_) {
+    auto new_minithumbnail = G()->get_option_boolean("disable_minithumbnails") ? string() : new_sticker->minithumbnail_;
+    if (s->minithumbnail_ != new_minithumbnail) {
       LOG(DEBUG) << "Sticker " << file_id << " minithumbnail has changed";
-      s->minithumbnail_ = std::move(new_sticker->minithumbnail_);
+      s->minithumbnail_ = std::move(new_minithumbnail);
       is_changed = true;
     }
     if (s->s_thumbnail_ != new_sticker->s_thumbnail_ && new_sticker->s_thumbnail_.file_id.is_valid()) {
@@ -3411,7 +3422,7 @@ void StickersManager::create_sticker(FileId file_id, FileId premium_animation_fi
   auto s = make_unique<Sticker>();
   s->file_id_ = file_id;
   s->dimensions_ = dimensions;
-  if (!td_->auth_manager_->is_bot()) {
+  if (!td_->auth_manager_->is_bot() && !G()->get_option_boolean("disable_minithumbnails")) {
     s->minithumbnail_ = std::move(minithumbnail);
   }
   add_sticker_thumbnail(s.get(), std::move(thumbnail));
@@ -3619,7 +3630,7 @@ StickerSetId StickersManager::on_get_sticker_set(tl_object_ptr<telegram_api::sti
     s->is_inited_ = true;
     s->title_ = std::move(set->title_);
     s->short_name_ = std::move(set->short_name_);
-    if (!td_->auth_manager_->is_bot()) {
+    if (!td_->auth_manager_->is_bot() && !G()->get_option_boolean("disable_minithumbnails")) {
       s->minithumbnail_ = std::move(minithumbnail);
     }
     s->thumbnail_ = std::move(thumbnail);
@@ -3661,6 +3672,9 @@ StickerSetId StickersManager::on_get_sticker_set(tl_object_ptr<telegram_api::sti
       if (installed_sticker_sets_hints_[type].has_key(set_id.get())) {
         installed_sticker_sets_hints_[type].add(set_id.get(), PSLICE() << s->title_ << ' ' << s->short_name_);
       }
+    }
+    if (G()->get_option_boolean("disable_minithumbnails")) {
+      minithumbnail.clear();
     }
     if (s->minithumbnail_ != minithumbnail) {
       LOG(INFO) << "Minithumbnail of " << set_id << " has changed";
