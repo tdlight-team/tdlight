@@ -6,6 +6,7 @@
 //
 #pragma once
 
+#include "td/telegram/Global.h"
 #include "td/telegram/VideoNotesManager.h"
 
 #include "td/telegram/files/FileId.hpp"
@@ -22,7 +23,7 @@ void VideoNotesManager::store_video_note(FileId file_id, StorerT &storer) const 
   const VideoNote *video_note = get_video_note(file_id);
   CHECK(video_note != nullptr);
   bool has_duration = video_note->duration != 0;
-  bool has_minithumbnail = !video_note->minithumbnail.empty();
+  bool has_minithumbnail = !G()->get_option_boolean("disable_minithumbnails") && !video_note->minithumbnail.empty();
   bool has_thumbnail = video_note->thumbnail.file_id.is_valid();
   bool is_transcribed = video_note->transcription_info != nullptr && video_note->transcription_info->is_transcribed();
   bool has_waveform = !video_note->waveform.empty();
@@ -80,7 +81,11 @@ FileId VideoNotesManager::parse_video_note(ParserT &parser) {
   }
   parse(video_note->dimensions, parser);
   if (has_minithumbnail) {
-    parse(video_note->minithumbnail, parser);
+    string minithumbnail;
+    parse(minithumbnail, parser);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      video_note->minithumbnail = std::move(minithumbnail);
+    }
   }
   if (has_thumbnail) {
     parse(video_note->thumbnail, parser);

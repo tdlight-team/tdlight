@@ -105,6 +105,7 @@ FileId VideosManager::on_get_video(unique_ptr<Video> new_video, bool replace) {
   CHECK(file_id.is_valid());
   LOG(INFO) << "Receive video " << file_id;
   auto &v = videos_[file_id];
+  auto disable_minithumbnails = G()->get_option_boolean("disable_minithumbnails");
   if (v == nullptr) {
     v = std::move(new_video);
   } else if (replace) {
@@ -119,7 +120,6 @@ FileId VideosManager::on_get_video(unique_ptr<Video> new_video, bool replace) {
       LOG(DEBUG) << "Video " << file_id << " info has changed";
       v->mime_type = std::move(new_video->mime_type);
       v->file_name = std::move(new_video->file_name);
-      v->minithumbnail = std::move(new_video->minithumbnail);
       v->thumbnail = std::move(new_video->thumbnail);
       v->animated_thumbnail = std::move(new_video->animated_thumbnail);
       v->duration = new_video->duration;
@@ -131,8 +131,10 @@ FileId VideosManager::on_get_video(unique_ptr<Video> new_video, bool replace) {
       v->start_ts = new_video->start_ts;
       v->codec = std::move(new_video->codec);
     }
-    if (!G()->get_option_boolean("disable_minithumbnails")) {
+    if (!disable_minithumbnails) {
       v->minithumbnail = std::move(new_video->minithumbnail);
+    } else {
+      v->minithumbnail.clear();
     }
     v->thumbnail = std::move(new_video->thumbnail);
     v->animated_thumbnail = std::move(new_video->animated_thumbnail);
@@ -205,12 +207,17 @@ void VideosManager::create_video(FileId file_id, string minithumbnail, PhotoSize
                                  int32 preload_prefix_size, double start_ts, string &&codec, bool replace) {
   auto v = make_unique<Video>();
   v->file_id = file_id;
-  v->file_name = std::move(file_name);
   v->mime_type = std::move(mime_type);
+  if (G()->get_option_boolean("disable_document_filenames") &&
+      (v->mime_type.rfind("image/") == 0 || v->mime_type.rfind("video/") == 0 || v->mime_type.rfind("audio/") == 0)) {
+    v->file_name = "0";
+  } else {
+    v->file_name = std::move(file_name);
+  }
   v->duration = max(duration, 0);
   v->precise_duration = duration == 0 ? 0.0 : clamp(precise_duration, duration - 1.0, duration + 0.0);
   v->dimensions = dimensions;
-  if (!td_->auth_manager_->is_bot() && G()->get_option_boolean("disable_minithumbnails")) {
+  if (!td_->auth_manager_->is_bot() && !G()->get_option_boolean("disable_minithumbnails")) {
     v->minithumbnail = std::move(minithumbnail);
   }
   v->thumbnail = std::move(thumbnail);

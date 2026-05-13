@@ -104,6 +104,7 @@ FileId AudiosManager::on_get_audio(unique_ptr<Audio> new_audio, bool replace) {
   CHECK(file_id.is_valid());
   LOG(INFO) << "Receive audio " << file_id;
   auto &a = audios_[file_id];
+  auto disable_minithumbnails = G()->get_option_boolean("disable_minithumbnails");
   if (a == nullptr) {
     a = std::move(new_audio);
   } else if (replace) {
@@ -118,8 +119,12 @@ FileId AudiosManager::on_get_audio(unique_ptr<Audio> new_audio, bool replace) {
       a->performer = std::move(new_audio->performer);
       a->file_name = std::move(new_audio->file_name);
       a->date = new_audio->date;
-      a->minithumbnail = std::move(new_audio->minithumbnail);
       a->thumbnail = std::move(new_audio->thumbnail);
+    }
+    if (!disable_minithumbnails) {
+      a->minithumbnail = std::move(new_audio->minithumbnail);
+    } else {
+      a->minithumbnail.clear();
     }
   }
 
@@ -203,13 +208,18 @@ void AudiosManager::create_audio(FileId file_id, string minithumbnail, PhotoSize
                                  bool replace) {
   auto a = make_unique<Audio>();
   a->file_id = file_id;
-  a->file_name = std::move(file_name);
   a->mime_type = std::move(mime_type);
+  if (G()->get_option_boolean("disable_document_filenames") &&
+      (a->mime_type.rfind("image/") == 0 || a->mime_type.rfind("video/") == 0 || a->mime_type.rfind("audio/") == 0)) {
+    a->file_name = "0";
+  } else {
+    a->file_name = std::move(file_name);
+  }
   a->duration = max(duration, 0);
   a->title = std::move(title);
   a->performer = std::move(performer);
   a->date = date;
-  if (!td_->auth_manager_->is_bot()) {
+  if (!td_->auth_manager_->is_bot() && !G()->get_option_boolean("disable_minithumbnails")) {
     a->minithumbnail = std::move(minithumbnail);
   }
   a->thumbnail = std::move(thumbnail);

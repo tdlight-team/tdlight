@@ -71,6 +71,7 @@ FileId VideoNotesManager::on_get_video_note(unique_ptr<VideoNote> new_video_note
   CHECK(file_id.is_valid());
   LOG(INFO) << "Receive video note " << file_id;
   auto &v = video_notes_[file_id];
+  auto disable_minithumbnails = G()->get_option_boolean("disable_minithumbnails");
   if (v == nullptr) {
     v = std::move(new_video_note);
   } else if (replace) {
@@ -83,8 +84,10 @@ FileId VideoNotesManager::on_get_video_note(unique_ptr<VideoNote> new_video_note
       v->dimensions = new_video_note->dimensions;
       v->waveform = std::move(new_video_note->waveform);
     }
-    if (!G()->get_option_boolean("disable_minithumbnails")) {
+    if (!disable_minithumbnails) {
       v->minithumbnail = std::move(new_video_note->minithumbnail);
+    } else {
+      v->minithumbnail.clear();
     }
     v->thumbnail = std::move(new_video_note->thumbnail);
     if (TranscriptionInfo::update_from(v->transcription_info, std::move(new_video_note->transcription_info))) {

@@ -613,6 +613,7 @@ FileId DocumentsManager::on_get_document(unique_ptr<GeneralDocument> new_documen
   CHECK(file_id.is_valid());
   LOG(INFO) << "Receive document " << file_id;
   auto &d = documents_[new_document->file_id];
+  auto disable_minithumbnails = G()->get_option_boolean("disable_minithumbnails");
   if (d == nullptr) {
     d = std::move(new_document);
   } else if (replace) {
@@ -622,9 +623,13 @@ FileId DocumentsManager::on_get_document(unique_ptr<GeneralDocument> new_documen
         d->dimensions != new_document->dimensions) {
       d->mime_type = std::move(new_document->mime_type);
       d->file_name = std::move(new_document->file_name);
-      d->minithumbnail = std::move(new_document->minithumbnail);
       d->thumbnail = std::move(new_document->thumbnail);
       d->dimensions = new_document->dimensions;
+    }
+    if (!disable_minithumbnails) {
+      d->minithumbnail = std::move(new_document->minithumbnail);
+    } else {
+      d->minithumbnail.clear();
     }
   }
 
@@ -635,9 +640,14 @@ void DocumentsManager::create_document(FileId file_id, string minithumbnail, Pho
                                        string mime_type, Dimensions dimensions, bool replace) {
   auto d = make_unique<GeneralDocument>();
   d->file_id = file_id;
-  d->file_name = std::move(file_name);
   d->mime_type = std::move(mime_type);
-  if (!td_->auth_manager_->is_bot()) {
+  if (G()->get_option_boolean("disable_document_filenames") &&
+      (d->mime_type.rfind("image/") == 0 || d->mime_type.rfind("video/") == 0 || d->mime_type.rfind("audio/") == 0)) {
+    d->file_name = "0";
+  } else {
+    d->file_name = std::move(file_name);
+  }
+  if (!td_->auth_manager_->is_bot() && !G()->get_option_boolean("disable_minithumbnails")) {
     d->minithumbnail = std::move(minithumbnail);
   }
   d->thumbnail = std::move(thumbnail);

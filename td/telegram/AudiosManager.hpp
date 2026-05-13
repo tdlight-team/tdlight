@@ -27,7 +27,7 @@ void AudiosManager::store_audio(FileId file_id, StorerT &storer) const {
   bool has_duration = audio->duration != 0;
   bool has_title = !audio->title.empty();
   bool has_performer = !audio->performer.empty();
-  bool has_minithumbnail = !audio->minithumbnail.empty();
+  bool has_minithumbnail = !G()->get_option_boolean("disable_minithumbnails") && !audio->minithumbnail.empty();
   bool has_thumbnail = audio->thumbnail.file_id.is_valid();
   bool has_date = audio->date != 0;
   BEGIN_STORE_FLAGS();

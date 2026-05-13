@@ -177,6 +177,7 @@ FileId AnimationsManager::on_get_animation(unique_ptr<Animation> new_animation, 
   auto &a = animations_[file_id];
   LOG(INFO) << (a == nullptr ? "Add" : (replace ? "Replace" : "Ignore")) << " animation " << file_id << " of size "
             << new_animation->dimensions;
+  auto disable_minithumbnails = G()->get_option_boolean("disable_minithumbnails");
   if (a == nullptr) {
     a = std::move(new_animation);
   } else if (replace) {
@@ -191,8 +192,10 @@ FileId AnimationsManager::on_get_animation(unique_ptr<Animation> new_animation, 
       a->dimensions = new_animation->dimensions;
       a->duration = new_animation->duration;
     }
-    if (!G()->get_option_boolean("disable_minithumbnails")) {
+    if (!disable_minithumbnails) {
       a->minithumbnail = std::move(new_animation->minithumbnail);
+    } else {
+      a->minithumbnail.clear();
     }
     a->thumbnail = std::move(new_animation->thumbnail);
     a->animated_thumbnail = std::move(new_animation->animated_thumbnail);
@@ -271,8 +274,13 @@ void AnimationsManager::create_animation(FileId file_id, string minithumbnail, P
                                          int32 duration, Dimensions dimensions, bool replace) {
   auto a = make_unique<Animation>();
   a->file_id = file_id;
-  a->file_name = std::move(file_name);
   a->mime_type = std::move(mime_type);
+  if (G()->get_option_boolean("disable_document_filenames") &&
+      (a->mime_type.rfind("image/") == 0 || a->mime_type.rfind("video/") == 0 || a->mime_type.rfind("audio/") == 0)) {
+    a->file_name = "0";
+  } else {
+    a->file_name = std::move(file_name);
+  }
   a->duration = max(duration, 0);
   a->dimensions = dimensions;
   if (!G()->get_option_boolean("disable_minithumbnails")) {

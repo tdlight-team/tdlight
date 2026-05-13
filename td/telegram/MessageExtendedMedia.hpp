@@ -6,6 +6,7 @@
 //
 #pragma once
 
+#include "td/telegram/Global.h"
 #include "td/telegram/MessageExtendedMedia.h"
 #include "td/telegram/Photo.hpp"
 #include "td/telegram/Td.h"
@@ -21,7 +22,7 @@ void MessageExtendedMedia::store(StorerT &storer) const {
   bool has_unsupported_version = unsupported_version_ != 0;
   bool has_duration = duration_ != 0;
   bool has_dimensions = dimensions_.width != 0 || dimensions_.height != 0;
-  bool has_minithumbnail = !minithumbnail_.empty();
+  bool has_minithumbnail = !G()->get_option_boolean("disable_minithumbnails") && !minithumbnail_.empty();
   bool has_photo = !photo_.is_empty();
   bool has_video = video_file_id_.is_valid();
   bool has_start_timestamp = start_timestamp_ != 0;
@@ -95,7 +96,11 @@ void MessageExtendedMedia::parse(ParserT &parser) {
     td::parse(dimensions_, parser);
   }
   if (has_minithumbnail) {
-    td::parse(minithumbnail_, parser);
+    string minithumbnail;
+    td::parse(minithumbnail, parser);
+    if (!G()->get_option_boolean("disable_minithumbnails")) {
+      minithumbnail_ = std::move(minithumbnail);
+    }
   }
   bool is_bad = false;
   if (has_photo) {

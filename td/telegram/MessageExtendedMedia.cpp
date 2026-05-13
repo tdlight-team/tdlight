@@ -12,6 +12,7 @@
 #include "td/telegram/DocumentsManager.h"
 #include "td/telegram/files/FileManager.h"
 #include "td/telegram/files/FileType.h"
+#include "td/telegram/Global.h"
 #include "td/telegram/MessageContent.h"
 #include "td/telegram/Photo.h"
 #include "td/telegram/PhotoSize.h"
@@ -42,7 +43,9 @@ MessageExtendedMedia::MessageExtendedMedia(
       if (media->thumb_ != nullptr) {
         if (media->thumb_->get_id() == telegram_api::photoStrippedSize::ID) {
           auto thumbnail = move_tl_object_as<telegram_api::photoStrippedSize>(media->thumb_);
-          minithumbnail_ = thumbnail->bytes_.as_slice().str();
+          if (!G()->get_option_boolean("disable_minithumbnails")) {
+            minithumbnail_ = thumbnail->bytes_.as_slice().str();
+          }
         } else {
           LOG(ERROR) << "Receive " << to_string(media->thumb_);
         }

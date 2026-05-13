@@ -24,7 +24,7 @@ void DocumentsManager::store_document(FileId file_id, StorerT &storer) const {
   CHECK(document != nullptr);
   bool has_file_name = !document->file_name.empty();
   bool has_mime_type = !document->mime_type.empty();
-  bool has_minithumbnail = !document->minithumbnail.empty();
+  bool has_minithumbnail = !G()->get_option_boolean("disable_minithumbnails") && !document->minithumbnail.empty();
   bool has_thumbnail = document->thumbnail.file_id.is_valid();
   bool has_dimensions = document->dimensions != Dimensions();
   BEGIN_STORE_FLAGS();

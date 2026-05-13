@@ -36398,13 +36398,18 @@ void MessagesManager::get_current_state(vector<td_api::object_ptr<td_api::Update
   }
 
   vector<td_api::object_ptr<td_api::Update>> last_message_updates;
+  auto ignore_update_chat_last_message = G()->get_option_boolean("ignore_update_chat_last_message");
   dialogs_.foreach([&](const DialogId &dialog_id, const unique_ptr<Dialog> &dialog) {
     const Dialog *d = dialog.get();
     auto update = td_api::make_object<td_api::updateNewChat>(get_chat_object(d, "get_current_state"));
     if (update->chat_->last_message_ != nullptr) {
-      last_message_updates.push_back(td_api::make_object<td_api::updateChatLastMessage>(
-          get_chat_id_object(dialog_id, "updateChatLastMessage"), std::move(update->chat_->last_message_),
-          get_chat_positions_object(d)));
+      if (!ignore_update_chat_last_message) {
+        last_message_updates.push_back(td_api::make_object<td_api::updateChatLastMessage>(
+            get_chat_id_object(dialog_id, "updateChatLastMessage"), std::move(update->chat_->last_message_),
+            get_chat_positions_object(d)));
+      } else {
+        update->chat_->last_message_ = nullptr;
+      }
     }
     updates.push_back(std::move(update));
   });
