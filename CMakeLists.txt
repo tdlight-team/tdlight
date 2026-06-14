@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 
-project(TDLib VERSION 1.8.64 LANGUAGES CXX C)
+project(TDLib VERSION 1.8.65 LANGUAGES CXX C)
 
 if (NOT DEFINED CMAKE_MODULE_PATH)
   set(CMAKE_MODULE_PATH "")
@@ -463,10 +463,12 @@ set(TDLIB_SOURCE_PART1
   td/telegram/files/FileStatsWorker.cpp
   td/telegram/files/FileType.cpp
   td/telegram/files/FileUploader.cpp
+  td/telegram/files/FileUploadId.cpp
   td/telegram/files/FileUploadManager.cpp
   td/telegram/files/PartsManager.cpp
   td/telegram/files/ResourceManager.cpp
   td/telegram/files/ResourceState.cpp
+  td/telegram/FormattedDate.cpp
   td/telegram/ForumTopic.cpp
   td/telegram/ForumTopicEditedData.cpp
   td/telegram/ForumTopicIcon.cpp
@@ -494,6 +496,7 @@ set(TDLIB_SOURCE_PART1
   td/telegram/InputGroupCallId.cpp
   td/telegram/InputInvoice.cpp
   td/telegram/InputMessageText.cpp
+  td/telegram/JoinChatBotResult.cpp
   td/telegram/JsonValue.cpp
   td/telegram/KeyboardButtonStyle.cpp
   td/telegram/LanguagePackManager.cpp
@@ -609,6 +612,7 @@ set(TDLIB_SOURCE_PART2
   td/telegram/RequestedDialogType.cpp
   td/telegram/Requests.cpp
   td/telegram/RestrictionReason.cpp
+  td/telegram/RichMessage.cpp
   td/telegram/SavedMessagesManager.cpp
   td/telegram/SavedMessagesTopicId.cpp
   td/telegram/ScopeNotificationSettings.cpp
@@ -688,6 +692,7 @@ set(TDLIB_SOURCE_PART2
   td/telegram/TranscriptionManager.cpp
   td/telegram/TranslationManager.cpp
   td/telegram/UpdatesManager.cpp
+  td/telegram/UserId.cpp
   td/telegram/UserManager.cpp
   td/telegram/Usernames.cpp
   td/telegram/UserPrivacySetting.cpp
@@ -701,6 +706,9 @@ set(TDLIB_SOURCE_PART2
   td/telegram/WebApp.cpp
   td/telegram/WebAppManager.cpp
   td/telegram/WebAppOpenParameters.cpp
+  td/telegram/WebBrowserManager.cpp
+  td/telegram/WebBrowserSettings.cpp
+  td/telegram/WebDomainException.cpp
   td/telegram/WebPageBlock.cpp
   td/telegram/WebPagesManager.cpp
 
@@ -851,6 +859,7 @@ set(TDLIB_SOURCE_PART2
   td/telegram/files/ResourceManager.h
   td/telegram/files/ResourceState.h
   td/telegram/FolderId.h
+  td/telegram/FormattedDate.h
   td/telegram/ForumTopic.h
   td/telegram/ForumTopicEditedData.h
   td/telegram/ForumTopicFullId.h
@@ -882,6 +891,7 @@ set(TDLIB_SOURCE_PART2
   td/telegram/InputGroupCallId.h
   td/telegram/InputInvoice.h
   td/telegram/InputMessageText.h
+  td/telegram/JoinChatBotResult.h
   td/telegram/JsonValue.h
   td/telegram/KeyboardButtonStyle.h
   td/telegram/LabeledPricePart.h
@@ -1025,6 +1035,7 @@ set(TDLIB_SOURCE_PART2
   td/telegram/RequestedDialogType.h
   td/telegram/Requests.h
   td/telegram/RestrictionReason.h
+  td/telegram/RichMessage.h
   td/telegram/SavedMessagesManager.h
   td/telegram/SavedMessagesTopicId.h
   td/telegram/ScheduledServerMessageId.h
@@ -1134,6 +1145,9 @@ set(TDLIB_SOURCE_PART2
   td/telegram/WebApp.h
   td/telegram/WebAppManager.h
   td/telegram/WebAppOpenParameters.h
+  td/telegram/WebBrowserManager.h
+  td/telegram/WebBrowserSettings.h
+  td/telegram/WebDomainException.h
   td/telegram/WebPageBlock.h
   td/telegram/WebPageId.h
   td/telegram/WebPagesManager.h
@@ -1178,6 +1192,7 @@ set(TDLIB_SOURCE_PART2
   td/telegram/files/FileLocation.hpp
   td/telegram/files/FileManager.hpp
   td/telegram/files/FileSourceId.hpp
+  td/telegram/FormattedDate.hpp
   td/telegram/ForumTopic.hpp
   td/telegram/ForumTopicEditedData.hpp
   td/telegram/ForumTopicIcon.hpp
@@ -1221,6 +1236,7 @@ set(TDLIB_SOURCE_PART2
   td/telegram/RepliedMessageInfo.hpp
   td/telegram/ReplyMarkup.hpp
   td/telegram/RequestedDialogType.hpp
+  td/telegram/RichMessage.hpp
   td/telegram/ScopeNotificationSettings.hpp
   td/telegram/SecureValue.hpp
   td/telegram/SendCodeHelper.hpp
@@ -1256,6 +1272,8 @@ set(TDLIB_SOURCE_PART2
   td/telegram/VideosManager.hpp
   td/telegram/VoiceNotesManager.hpp
   td/telegram/WebApp.hpp
+  td/telegram/WebBrowserSettings.hpp
+  td/telegram/WebDomainException.hpp
 
   ${TL_TD_AUTO_SOURCE}
 

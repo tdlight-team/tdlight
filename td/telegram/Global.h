@@ -94,6 +94,7 @@ class TranslationManager;
 class UpdatesManager;
 class UserManager;
 class WebAppManager;
+class WebBrowserManager;
 class WebPagesManager;
 
 class Global final : public ActorContext {
@@ -644,6 +645,13 @@ class Global final : public ActorContext {
     web_app_manager_ = web_app_manager;
   }
 
+  ActorId<WebBrowserManager> web_browser_manager() const {
+    return web_browser_manager_;
+  }
+  void set_web_browser_manager(ActorId<WebBrowserManager> web_browser_manager) {
+    web_browser_manager_ = web_browser_manager;
+  }
+
   ActorId<WebPagesManager> web_pages_manager() const {
     return web_pages_manager_;
   }
@@ -838,6 +846,7 @@ class Global final : public ActorContext {
   ActorId<UpdatesManager> updates_manager_;
   ActorId<UserManager> user_manager_;
   ActorId<WebAppManager> web_app_manager_;
+  ActorId<WebBrowserManager> web_browser_manager_;
   ActorId<WebPagesManager> web_pages_manager_;
   ActorOwn<ConnectionCreator> connection_creator_;
   ActorOwn<TempAuthKeyWatchdog> temp_auth_key_watchdog_;
