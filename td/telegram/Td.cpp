@@ -560,6 +560,7 @@ void Td::dec_actor_refcnt() {
       reset_manager(message_import_manager_, "MessageImportManager");
       reset_manager(message_query_manager_, "MessageQueryManager");
       reset_manager(messages_manager_, "MessagesManager");
+      reset_manager(memory_manager_, "MemoryManager");
       reset_manager(notification_manager_, "NotificationManager");
       reset_manager(notification_settings_manager_, "NotificationSettingsManager");
       reset_manager(online_manager_, "OnlineManager");
@@ -740,6 +741,7 @@ void Td::clear() {
   reset_actor(ActorOwn<Actor>(std::move(message_import_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(message_query_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(messages_manager_actor_)));
+  reset_actor(ActorOwn<Actor>(std::move(memory_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(notification_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(notification_settings_manager_actor_)));
   reset_actor(ActorOwn<Actor>(std::move(online_manager_actor_)));

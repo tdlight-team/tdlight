@@ -3766,8 +3766,10 @@ void UpdatesManager::on_update(tl_object_ptr<telegram_api::updateEditEphemeralMe
 
 void UpdatesManager::on_update(tl_object_ptr<telegram_api::updateDeleteEphemeralMessages> update,
                                Promise<Unit> &&promise) {
-  td_->messages_manager_->on_delete_ephemeral_messages(DialogId(update->peer_),
-                                                       EphemeralMessageId::get_ephemeral_message_ids(update->ids_));
+  if (!G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    td_->messages_manager_->on_delete_ephemeral_messages(DialogId(update->peer_),
+                                                         EphemeralMessageId::get_ephemeral_message_ids(update->ids_));
+  }
   promise.set_value(Unit());
 }
 

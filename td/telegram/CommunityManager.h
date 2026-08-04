@@ -55,6 +55,8 @@ class CommunityManager final : public Actor {
 
   void on_binlog_community_event(BinlogEvent &&event);
 
+  void memory_stats(vector<string> &output);
+
   void get_current_state(vector<td_api::object_ptr<td_api::Update>> &updates) const;
 
  private:
