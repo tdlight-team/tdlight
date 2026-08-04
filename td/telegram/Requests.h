@@ -340,13 +340,23 @@ class Requests {
 
   void on_request(uint64 id, td_api::translateText &request);
 
+  void on_request(uint64 id, td_api::translateRichMessage &request);
+
   void on_request(uint64 id, td_api::translateMessageText &request);
+
+  void on_request(uint64 id, td_api::translateMessageRichMessage &request);
 
   void on_request(uint64 id, td_api::summarizeMessage &request);
 
   void on_request(uint64 id, td_api::composeTextWithAi &request);
 
+  void on_request(uint64 id, td_api::composeRichMessageWithAi &request);
+
+  void on_request(uint64 id, td_api::createRichMessageWithAi &request);
+
   void on_request(uint64 id, td_api::fixTextWithAi &request);
+
+  void on_request(uint64 id, td_api::fixRichMessageWithAi &request);
 
   void on_request(uint64 id, const td_api::recognizeSpeech &request);
 
@@ -640,6 +650,8 @@ class Requests {
 
   void on_request(uint64 id, const td_api::deleteMessages &request);
 
+  void on_request(uint64 id, const td_api::deleteEphemeralMessage &request);
+
   void on_request(uint64 id, const td_api::deleteChatMessagesBySender &request);
 
   void on_request(uint64 id, const td_api::deleteChatMessagesByDate &request);
@@ -668,6 +680,8 @@ class Requests {
 
   void on_request(uint64 id, td_api::sendInlineQueryResultMessage &request);
 
+  void on_request(uint64 id, td_api::sendEphemeralMessage &request);
+
   void on_request(uint64 id, td_api::addLocalMessage &request);
 
   void on_request(uint64 id, td_api::editMessageText &request);
@@ -691,6 +705,8 @@ class Requests {
   void on_request(uint64 id, td_api::editInlineMessageCaption &request);
 
   void on_request(uint64 id, td_api::editInlineMessageReplyMarkup &request);
+
+  void on_request(uint64 id, td_api::editEphemeralMessage &request);
 
   void on_request(uint64 id, td_api::editMessageSchedulingState &request);
 
@@ -1662,9 +1678,9 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getStarAdAccountUrl &request);
 
-  void on_request(uint64 id, const td_api::getTonRevenueStatistics &request);
+  void on_request(uint64 id, const td_api::getGramRevenueStatistics &request);
 
-  void on_request(uint64 id, const td_api::getTonWithdrawalUrl &request);
+  void on_request(uint64 id, const td_api::getGramWithdrawalUrl &request);
 
   void on_request(uint64 id, const td_api::getMessageStatistics &request);
 
@@ -1751,6 +1767,8 @@ class Requests {
   void on_request(uint64 id, td_api::getMainWebApp &request);
 
   void on_request(uint64 id, td_api::getWebAppUrl &request);
+
+  void on_request(uint64 id, td_api::getGuardBotWebAppUrl &request);
 
   void on_request(uint64 id, td_api::sendWebAppData &request);
 

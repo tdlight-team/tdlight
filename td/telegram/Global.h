@@ -42,6 +42,7 @@ class BusinessConnectionManager;
 class BusinessManager;
 class CallManager;
 class ChatManager;
+class CommunityManager;
 class ConfigManager;
 class ConnectionCreator;
 class DialogActionManager;
@@ -50,6 +51,7 @@ class DialogInviteLinkManager;
 class DialogManager;
 class DialogParticipantManager;
 class DownloadManager;
+class DraftMessageManager;
 class FileManager;
 class FileReferenceManager;
 class ForumTopicManager;
@@ -332,6 +334,13 @@ class Global final : public ActorContext {
     chat_manager_ = chat_manager;
   }
 
+  ActorId<CommunityManager> community_manager() const {
+    return community_manager_;
+  }
+  void set_community_manager(ActorId<CommunityManager> community_manager) {
+    community_manager_ = community_manager;
+  }
+
   ActorId<ConfigManager> config_manager() const {
     return config_manager_;
   }
@@ -379,6 +388,13 @@ class Global final : public ActorContext {
   }
   void set_download_manager(ActorId<DownloadManager> download_manager) {
     download_manager_ = std::move(download_manager);
+  }
+
+  ActorId<DraftMessageManager> draft_message_manager() const {
+    return draft_message_manager_;
+  }
+  void set_draft_message_manager(ActorId<DraftMessageManager> draft_message_manager) {
+    draft_message_manager_ = std::move(draft_message_manager);
   }
 
   ActorId<FileManager> file_manager() const {
@@ -802,6 +818,7 @@ class Global final : public ActorContext {
   ActorId<BusinessManager> business_manager_;
   ActorId<CallManager> call_manager_;
   ActorId<ChatManager> chat_manager_;
+  ActorId<CommunityManager> community_manager_;
   ActorId<ConfigManager> config_manager_;
   ActorId<DialogActionManager> dialog_action_manager_;
   ActorId<DialogFilterManager> dialog_filter_manager_;
@@ -809,6 +826,7 @@ class Global final : public ActorContext {
   ActorId<DialogManager> dialog_manager_;
   ActorId<DialogParticipantManager> dialog_participant_manager_;
   ActorId<DownloadManager> download_manager_;
+  ActorId<DraftMessageManager> draft_message_manager_;
   ActorId<FileManager> file_manager_;
   ActorId<FileReferenceManager> file_reference_manager_;
   ActorId<ForumTopicManager> forum_topic_manager_;

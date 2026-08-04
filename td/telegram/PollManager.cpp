@@ -19,6 +19,7 @@
 #include "td/telegram/logevent/LogEventHelper.h"
 #include "td/telegram/MemoryManager.h"
 #include "td/telegram/MessageContent.h"
+#include "td/telegram/MessageContentDupType.h"
 #include "td/telegram/MessageCopyOptions.h"
 #include "td/telegram/MessageId.h"
 #include "td/telegram/MessageQueryManager.h"
@@ -732,19 +733,40 @@ td_api::object_ptr<td_api::poll> PollManager::get_poll_object(PollId poll_id, Di
 td_api::object_ptr<td_api::poll> PollManager::get_poll_object(PollId poll_id, const Poll *poll, DialogId dialog_id,
                                                               MessageId message_id, DialogId initial_dialog_id,
                                                               int32 initial_date, bool is_real_message_content) const {
+  auto is_bot = td_->auth_manager_->is_bot();
   auto poll_options = transform(
       poll->options_, [td = td_](const PollOption &poll_option) { return poll_option.get_poll_option_object(td); });
+  auto recent_voters = get_min_message_senders_object(td_, poll->recent_voter_dialog_ids_, "get_poll_object");
+  bool hide_correct_options = false;
   int32 voter_count_diff = 0;
   auto it = pending_answers_.find(poll_id);
   if (it != pending_answers_.end() && !(it->second.is_finished_ && poll->was_saved_)) {
     const auto &chosen_options = it->second.options_;
     LOG(INFO) << "Have pending chosen options " << chosen_options << " in " << poll_id;
+    auto remove_self = [&](vector<td_api::object_ptr<td_api::MessageSender>> &voters) {
+      for (auto voter_it = voters.begin(); voter_it != voters.end(); ++voter_it) {
+        auto &voter_id = *voter_it;
+        if (voter_id->get_id() == td_api::messageSenderUser::ID &&
+            static_cast<const td_api::messageSenderUser *>(voter_id.get())->user_id_ ==
+                td_->user_manager_->get_my_id().get()) {
+          voters.erase(voter_it);
+          break;
+        }
+      }
+    };
     for (auto &poll_option : poll_options) {
       poll_option->is_being_chosen_ = td::contains(chosen_options, poll_option->id_);
-      if (poll_option->is_chosen_) {
+      if (poll_option->is_chosen_ && !poll_option->is_being_chosen_) {
         voter_count_diff = -1;
         poll_option->voter_count_--;
         poll_option->is_chosen_ = false;
+        remove_self(poll_option->recent_voter_ids_);
+      }
+    }
+    if (chosen_options.empty()) {
+      remove_self(recent_voters);
+      if (!is_bot && !poll->is_creator_) {
+        hide_correct_options = true;
       }
     }
   }
@@ -759,7 +781,7 @@ td_api::object_ptr<td_api::poll> PollManager::get_poll_object(PollId poll_id, co
 
   auto total_voter_count = poll->total_voter_count_ + voter_count_diff;
   auto can_get_voters = can_get_poll_voters(poll_id, poll, initial_dialog_id, initial_date) && is_real_message_content;
-  auto can_see_results = can_get_voters || td_->auth_manager_->is_bot();
+  auto can_see_results = can_get_voters || is_bot;
   if (!can_see_results) {
     // hide the voter counts
     for (auto &poll_option : poll_options) {
@@ -792,7 +814,7 @@ td_api::object_ptr<td_api::poll> PollManager::get_poll_object(PollId poll_id, co
   }
   td_api::object_ptr<td_api::PollType> poll_type;
   if (poll->is_quiz_) {
-    if (is_local_poll_id(poll_id)) {
+    if (is_local_poll_id(poll_id) || hide_correct_options) {
       poll_type = td_api::make_object<td_api::pollTypeQuiz>(
           vector<int32>(), get_formatted_text_object(nullptr, FormattedText(), true, -1), nullptr);
     } else {
@@ -823,9 +845,8 @@ td_api::object_ptr<td_api::poll> PollManager::get_poll_object(PollId poll_id, co
     close_date = 0;
   }
 
-  auto recent_voters = get_min_message_senders_object(td_, poll->recent_voter_dialog_ids_, "get_poll_object");
   vector<int32> option_order;
-  if (poll->shuffle_answers_ && !poll->is_creator_ && !td_->auth_manager_->is_bot()) {
+  if (poll->shuffle_answers_ && !poll->is_creator_ && !is_bot) {
     auto my_user_id = td_->user_manager_->get_my_id().get();
     vector<std::pair<uint32, int32>> sort_pairs;
     for (int32 i = 0; i < static_cast<int32>(poll_options.size()); i++) {
@@ -2287,7 +2308,7 @@ PollId PollManager::on_get_poll(PollId poll_id, tl_object_ptr<telegram_api::poll
         is_changed = true;
       }
       // creator sees poll results, while others don't, therefore the recent voters must not be dropped
-      // if countries, are limited, then results will be available for everyone, but hidden in get_poll_object
+      // if countries, are limited, then results will be available to everyone, but hidden in get_poll_object
       if (!(is_min && poll->is_creator_ && poll->hide_results_until_close_) && !is_bot) {
         vector<DialogId> recent_option_voter_dialog_ids;
         for (const auto &recent_voter : poll_result->recent_voters_) {
@@ -2311,6 +2332,26 @@ PollId PollManager::on_get_poll(PollId poll_id, tl_object_ptr<telegram_api::poll
           is_changed = true;
           need_update_recent_option_voter_min_channels = true;
         }
+      }
+    }
+  }
+  if (!is_min && poll_results->results_.empty() && poll->hide_results_until_close_) {
+    // the user have no access to results, therefore it didn't vote in the poll
+    for (size_t option_index = 0; option_index < poll->options_.size(); option_index++) {
+      auto &option = poll->options_[option_index];
+      if (option.is_chosen_) {
+        option.is_chosen_ = false;
+        is_changed = true;
+      }
+      if (option.voter_count_ != 0) {
+        invalidate_poll_option_voters(poll, poll_id, option_index);
+        option.voter_count_ = 0;
+        is_changed = true;
+      }
+      if (!option.recent_voter_dialog_ids_.empty()) {
+        option.recent_voter_dialog_ids_.clear();
+        is_changed = true;
+        need_update_recent_option_voter_min_channels = true;
       }
     }
   }
@@ -2357,7 +2398,7 @@ PollId PollManager::on_get_poll(PollId poll_id, tl_object_ptr<telegram_api::poll
   if (poll->is_quiz_) {
     if (!is_min || poll_server_is_closed) {
       if (poll->correct_option_ids_ != correct_option_ids) {
-        if (correct_option_ids.empty() && !poll->correct_option_ids_.empty()) {
+        if (correct_option_ids.empty() && !poll->correct_option_ids_.empty() && poll->has_revoting_disabled_) {
           LOG(ERROR) << "Can't change correct options of " << poll_id << " from " << poll->correct_option_ids_ << " to "
                      << correct_option_ids << " from " << source;
         } else {
@@ -2366,7 +2407,7 @@ PollId PollManager::on_get_poll(PollId poll_id, tl_object_ptr<telegram_api::poll
         }
       }
       if (poll->explanation_ != explanation) {
-        if (explanation.text.empty() && !poll->explanation_.text.empty()) {
+        if (explanation.text.empty() && !poll->explanation_.text.empty() && poll->has_revoting_disabled_) {
           LOG(ERROR) << "Can't change known " << poll_id << " explanation to empty from " << source;
         } else {
           poll->explanation_ = std::move(explanation);

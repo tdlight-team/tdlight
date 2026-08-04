@@ -36,6 +36,8 @@ class HttpConnectionBase : public Actor {
                      int32 idle_timeout, int32 slow_scheduler_id);
 
  private:
+  static constexpr size_t MAX_READ_SIZE = 1100 << 10;
+
   State state_;
 
   BufferedFd<SocketFd> fd_;
