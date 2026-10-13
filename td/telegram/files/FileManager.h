@@ -53,6 +53,7 @@ extern int VERBOSITY_NAME(update_file);
 
 class FileData;
 class FileDbInterface;
+struct InputMedia;
 
 enum class FileLocationSource : int8 { None, FromUser, FromBinlog, FromDatabase, FromServer };
 
@@ -542,7 +543,13 @@ class FileManager final : public Actor {
 
   void cancel_upload(FileUploadId file_upload_id);
 
+  void cancel_uploads(const vector<FileUploadId> &file_upload_ids);
+
   bool delete_partial_remote_location(FileUploadId file_upload_id);
+
+  void delete_partial_remote_location_if_needed(FileUploadId file_upload_id, bool was_uploaded);
+
+  void delete_partial_remote_location_if_needed(const vector<FileUploadId> &file_upload_ids, bool was_uploaded);
 
   void delete_partial_remote_location_if_needed(FileUploadId file_upload_id, const Status &error);
 
@@ -574,8 +581,8 @@ class FileManager final : public Actor {
                                              DialogId owner_dialog_id, bool is_encrypted) TD_WARN_UNUSED_RESULT;
   Result<FileId> get_input_file_id(FileType type, const tl_object_ptr<td_api::InputFile> &file,
                                    DialogId owner_dialog_id, bool allow_zero, bool is_encrypted,
-                                   bool get_by_hash = false, bool is_secure = false,
-                                   bool force_reuse = false) TD_WARN_UNUSED_RESULT;
+                                   bool get_by_hash = false, bool is_secure = false, bool force_reuse = false,
+                                   bool never_reuse = false) TD_WARN_UNUSED_RESULT;
 
   Result<FileId> get_map_thumbnail_file_id(Location location, int32 zoom, int32 width, int32 height, int32 scale,
                                            DialogId owner_dialog_id) TD_WARN_UNUSED_RESULT;
@@ -586,6 +593,18 @@ class FileManager final : public Actor {
   FileType guess_file_type(const td_api::object_ptr<td_api::InputFile> &file);
 
   vector<tl_object_ptr<telegram_api::InputDocument>> get_input_documents(const vector<FileId> &file_ids) const;
+
+  static bool extract_was_uploaded(const InputMedia &input_media);
+
+  static bool extract_was_thumbnail_uploaded(const InputMedia &input_media);
+
+  static string extract_file_reference(const InputMedia &input_media);
+
+  static vector<string> extract_file_references(const InputMedia &input_media);
+
+  static string extract_cover_file_reference(const InputMedia &input_media);
+
+  static vector<string> extract_cover_file_references(const InputMedia &input_media);
 
   static bool extract_was_uploaded(const telegram_api::object_ptr<telegram_api::InputMedia> &input_media);
 
@@ -599,6 +618,23 @@ class FileManager final : public Actor {
 
   static vector<string> extract_cover_file_references(
       const telegram_api::object_ptr<telegram_api::InputMedia> &input_media);
+
+  static bool extract_was_uploaded(const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message);
+
+  static bool extract_was_thumbnail_uploaded(
+      const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message);
+
+  static string extract_file_reference(
+      const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message);
+
+  static vector<string> extract_file_references(
+      const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message);
+
+  static string extract_cover_file_reference(
+      const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message);
+
+  static vector<string> extract_cover_file_references(
+      const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message);
 
   static string extract_file_reference(const telegram_api::object_ptr<telegram_api::InputDocument> &input_document);
 
@@ -984,6 +1020,9 @@ class FileManager final : public Actor {
   static bool extract_was_thumbnail_uploaded(const telegram_api::InputMedia *input_media);
 
   static string extract_file_reference(const telegram_api::InputMedia *input_media);
+
+  static vector<string> extract_file_references(
+      const vector<telegram_api::object_ptr<telegram_api::InputRichFile>> &input_rich_files);
 
   static string extract_cover_file_reference(const telegram_api::InputMedia *input_media);
 

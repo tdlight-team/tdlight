@@ -50,6 +50,7 @@
 #include "td/telegram/VideosManager.h"
 #include "td/telegram/VoiceNotesManager.h"
 #include "td/telegram/WebPageBlock.h"
+#include "td/telegram/WelcomeMessageManager.h"
 
 #include "td/db/binlog/BinlogEvent.h"
 #include "td/db/binlog/BinlogHelper.h"
@@ -551,8 +552,8 @@ void WebPagesManager::tear_down() {
 
 WebPagesManager::~WebPagesManager() {
   Scheduler::instance()->destroy_on_scheduler(G()->get_gc_scheduler_id(), web_pages_, web_page_messages_,
-                                              web_page_quick_reply_messages_, web_page_polls_, url_to_web_page_id_,
-                                              url_to_file_source_id_);
+                                              web_page_quick_reply_messages_, web_page_welcome_messages_,
+                                              web_page_polls_, url_to_web_page_id_, url_to_file_source_id_);
 }
 
 string WebPagesManager::get_web_page_url(const tl_object_ptr<telegram_api::WebPage> &web_page_ptr) {
@@ -574,7 +575,7 @@ string WebPagesManager::get_web_page_url(const tl_object_ptr<telegram_api::WebPa
 }
 
 void WebPagesManager::on_load_web_page_url_from_database(WebPageId web_page_id, const string &url) {
-  if (url.empty() || have_web_page(web_page_id)) {
+  if (url.empty() || have_web_page(web_page_id) || !web_page_id.is_valid()) {
     return;
   }
   pending_web_page_urls_.emplace(web_page_id, url);
@@ -802,7 +803,8 @@ WebPageId WebPagesManager::on_get_web_page(tl_object_ptr<telegram_api::WebPage> 
         }
       }
       if (web_page->cached_page_ != nullptr) {
-        on_get_web_page_instant_view(page.get(), std::move(web_page->cached_page_), web_page->hash_, owner_dialog_id);
+        on_get_web_page_instant_view(web_page_id, page.get(), std::move(web_page->cached_page_), web_page->hash_,
+                                     owner_dialog_id);
       }
 
       pending_web_page_urls_.erase(web_page_id);
@@ -1082,8 +1084,40 @@ void WebPagesManager::unregister_quick_reply_web_page(WebPageId web_page_id, Qui
   }
 }
 
+void WebPagesManager::register_welcome_message_web_page(WebPageId web_page_id, EphemeralMessageFullId message_full_id,
+                                                        const char *source) {
+  if (!web_page_id.is_valid()) {
+    return;
+  }
+
+  LOG(INFO) << "Register " << web_page_id << " from " << message_full_id << " from " << source;
+  bool is_inserted = web_page_welcome_messages_[web_page_id].insert(message_full_id).second;
+  LOG_CHECK(is_inserted) << source << " " << web_page_id << " " << message_full_id;
+
+  if (!have_web_page_force(web_page_id)) {
+    LOG(INFO) << "Waiting for " << web_page_id << " needed in " << message_full_id;
+    pending_web_pages_timeout_.add_timeout_in(web_page_id.get(), 1.0);
+  }
+}
+
+void WebPagesManager::unregister_welcome_message_web_page(WebPageId web_page_id, EphemeralMessageFullId message_full_id,
+                                                          const char *source) {
+  if (!web_page_id.is_valid()) {
+    return;
+  }
+
+  LOG(INFO) << "Unregister " << web_page_id << " from " << message_full_id << " from " << source;
+  auto &message_ids = web_page_welcome_messages_[web_page_id];
+  auto is_deleted = message_ids.erase(message_full_id) > 0;
+  LOG_CHECK(is_deleted) << source << " " << web_page_id << " " << message_full_id;
+
+  if (message_ids.empty()) {
+    web_page_welcome_messages_.erase(web_page_id);
+  }
+}
+
 void WebPagesManager::register_poll_web_pages(PollId poll_id, vector<WebPageId> &&web_page_ids) {
-  if (PollManager::is_local_poll_id(poll_id)) {
+  if (PollManager::is_local_poll_id(poll_id) || !poll_id.is_valid()) {
     return;
   }
   if (web_page_ids.empty()) {
@@ -1094,6 +1128,7 @@ void WebPagesManager::register_poll_web_pages(PollId poll_id, vector<WebPageId> 
     }
     LOG(INFO) << "Unregister " << web_page_ids << " from " << poll_id;
     for (auto web_page_id : it->second) {
+      CHECK(web_page_id.is_valid());
       auto &poll_ids = web_page_polls_[web_page_id];
       auto is_deleted = poll_ids.erase(poll_id) > 0;
       LOG_CHECK(is_deleted) << web_page_id << ' ' << poll_id;
@@ -1112,6 +1147,7 @@ void WebPagesManager::register_poll_web_pages(PollId poll_id, vector<WebPageId> 
 
   for (auto web_page_id : web_page_ids) {
     if (!td::contains(old_web_page_ids, web_page_id)) {
+      CHECK(web_page_id.is_valid());
       bool is_inserted = web_page_polls_[web_page_id].insert(poll_id).second;
       LOG_CHECK(is_inserted) << web_page_id << ' ' << poll_id;
 
@@ -1123,6 +1159,7 @@ void WebPagesManager::register_poll_web_pages(PollId poll_id, vector<WebPageId> 
   }
   for (auto web_page_id : old_web_page_ids) {
     if (!td::contains(web_page_ids, web_page_id)) {
+      CHECK(web_page_id.is_valid());
       auto &poll_ids = web_page_polls_[web_page_id];
       auto is_deleted = poll_ids.erase(poll_id) > 0;
       LOG_CHECK(is_deleted) << web_page_id << ' ' << poll_id;
@@ -1612,6 +1649,9 @@ td_api::object_ptr<td_api::LinkPreviewType> WebPagesManager::get_link_preview_ty
     switch (block_object->get_id()) {
       case td_api::pageBlockTitle::ID:
       case td_api::pageBlockAuthorDate::ID:
+        break;
+      case td_api::pageBlockBlockQuote::ID:
+        // AI summary
         break;
       case td_api::pageBlockCollage::ID: {
         auto *collage = static_cast<td_api::pageBlockCollage *>(block_object.get());
@@ -2237,6 +2277,32 @@ void WebPagesManager::on_web_page_changed(WebPageId web_page_id, bool have_web_p
     }
   }
   {
+    auto it = web_page_welcome_messages_.find(web_page_id);
+    if (it != web_page_welcome_messages_.end()) {
+      vector<EphemeralMessageFullId> message_full_ids;
+      for (const auto &message_full_id : it->second) {
+        message_full_ids.push_back(message_full_id);
+      }
+      CHECK(!message_full_ids.empty());
+      for (const auto &message_full_id : message_full_ids) {
+        if (!have_web_page) {
+          td_->welcome_message_manager_->delete_pending_message_web_page(message_full_id);
+        } else {
+          td_->welcome_message_manager_->on_external_update_message_content(message_full_id, "on_web_page_changed");
+        }
+      }
+
+      // don't check that on_external_update_message_content doesn't load new messages
+      if (!have_web_page && web_page_welcome_messages_.count(web_page_id) != 0) {
+        vector<EphemeralMessageFullId> new_message_full_ids;
+        for (const auto &message_full_id : web_page_welcome_messages_[web_page_id]) {
+          new_message_full_ids.push_back(message_full_id);
+        }
+        LOG(FATAL) << message_full_ids << ' ' << new_message_full_ids;
+      }
+    }
+  }
+  {
     auto it = web_page_polls_.find(web_page_id);
     if (it != web_page_polls_.end()) {
       vector<PollId> poll_ids;
@@ -2254,6 +2320,7 @@ void WebPagesManager::on_web_page_changed(WebPageId web_page_id, bool have_web_p
 
       // don't check that notify_on_poll_update doesn't load new polls
       if (!have_web_page && web_page_polls_.count(web_page_id) != 0) {
+        CHECK(web_page_id.is_valid());
         vector<PollId> new_poll_ids;
         for (auto poll_id : web_page_polls_[web_page_id]) {
           new_poll_ids.push_back(poll_id);
@@ -2347,6 +2414,16 @@ void WebPagesManager::on_pending_web_page_timeout(WebPageId web_page_id) {
     }
   }
   {
+    auto it = web_page_welcome_messages_.find(web_page_id);
+    if (it != web_page_welcome_messages_.end()) {
+      for (const auto &message_full_id : it->second) {
+        send_closure_later(G()->welcome_message_manager(), &WelcomeMessageManager::reload_welcome_messages,
+                           message_full_id.get_dialog_id(), Promise<Unit>());
+        count++;
+      }
+    }
+  }
+  {
     auto it = web_page_polls_.find(web_page_id);
     if (it != web_page_polls_.end()) {
       auto url_it = pending_web_page_urls_.find(web_page_id);
@@ -2375,8 +2452,9 @@ void WebPagesManager::on_pending_web_page_timeout(WebPageId web_page_id) {
   }
 }
 
-void WebPagesManager::on_get_web_page_instant_view(WebPage *web_page, tl_object_ptr<telegram_api::page> &&page,
-                                                   int32 hash, DialogId owner_dialog_id) {
+void WebPagesManager::on_get_web_page_instant_view(WebPageId web_page_id, WebPage *web_page,
+                                                   tl_object_ptr<telegram_api::page> &&page, int32 hash,
+                                                   DialogId owner_dialog_id) {
   CHECK(page != nullptr);
   FlatHashMap<int64, unique_ptr<Photo>> photos;
   for (auto &photo_ptr : page->photos_) {
@@ -2470,7 +2548,7 @@ void WebPagesManager::on_get_web_page_instant_view(WebPage *web_page, tl_object_
   web_page->instant_view_.is_loaded_ = true;
 
   LOG(DEBUG) << "Receive web page instant view: "
-             << to_string(get_web_page_instant_view_object(WebPageId(), &web_page->instant_view_, web_page->url_));
+             << to_string(get_web_page_instant_view_object(web_page_id, &web_page->instant_view_, web_page->url_));
 }
 
 class WebPagesManager::WebPageLogEvent {
@@ -2627,7 +2705,7 @@ void WebPagesManager::on_load_web_page_from_database(WebPageId web_page_id, stri
         const WebPage *web_page = get_web_page(web_page_id);
         if (web_page != nullptr && can_web_page_be_album(web_page) && !web_page->instant_view_.is_empty_ &&
             !web_page->instant_view_.is_loaded_) {
-          LOG(INFO) << "Forcely load instant view of " << web_page_id;
+          LOG(INFO) << "Forcibly load instant view of " << web_page_id;
           on_load_web_page_instant_view_from_database(
               web_page_id,
               G()->td_db()->get_sqlite_sync_pmc()->get(get_web_page_instant_view_database_key(web_page_id)));

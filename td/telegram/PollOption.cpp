@@ -8,8 +8,11 @@
 
 #include "td/telegram/AuthManager.h"
 #include "td/telegram/Dependencies.h"
+#include "td/telegram/files/FileUploadId.h"
 #include "td/telegram/MessageContent.h"
+#include "td/telegram/MessageContentDupType.h"
 #include "td/telegram/MessageCopyOptions.h"
+#include "td/telegram/MessageSelfDestructType.h"
 #include "td/telegram/MessageSender.h"
 #include "td/telegram/OptionManager.h"
 #include "td/telegram/Td.h"
@@ -71,6 +74,12 @@ Result<PollOption> PollOption::get_poll_option(Td *td, DialogId dialog_id,
   return PollOption(std::move(text), std::move(media));
 }
 
+PollOption::PollOption(PollOption &&) noexcept = default;
+
+PollOption &PollOption::operator=(PollOption &&) noexcept = default;
+
+PollOption::~PollOption() = default;
+
 Result<vector<PollOption>> PollOption::get_poll_options(
     Td *td, DialogId dialog_id, vector<td_api::object_ptr<td_api::inputPollOption>> &&input_poll_options) {
   if (input_poll_options.empty()) {
@@ -88,6 +97,10 @@ Result<vector<PollOption>> PollOption::get_poll_options(
   return std::move(options);
 }
 
+unique_ptr<MessageContent> PollOption::get_text_message_content() const {
+  return create_text_message_content(text_.text, text_.entities, WebPageId(), false, false, false, string());
+}
+
 WebPageId PollOption::get_web_page_id() const {
   return get_message_content_web_page_id(media_.get());
 }
@@ -97,13 +110,25 @@ void PollOption::remove_web_page() {
   remove_message_content_web_page(media_.get());
 }
 
+void PollOption::merge_media(Td *td, unique_ptr<MessageContent> &&content, DialogId dialog_id, bool need_merge_files,
+                             bool is_content_changed, bool need_update) {
+  merge_and_compare_message_contents(td, media_.get(), content.get(), true, dialog_id, need_merge_files,
+                                     vector<FileUploadId>(), MessageSelfDestructType(), 0.0, nullptr,
+                                     is_content_changed, need_update);
+  media_ = std::move(content);
+}
+
+string PollOption::get_search_text() const {
+  return text_.text;
+}
+
 PollOption PollOption::dup_option(Td *td, DialogId dialog_id) const {
   PollOption result;
   result.text_ = text_;
   remove_unallowed_entities(td, result.text_, dialog_id);
   if (media_ != nullptr) {
-    result.media_ =
-        dup_message_content(td, dialog_id, media_.get(), MessageContentDupType::Copy, MessageCopyOptions(true, false));
+    result.media_ = dup_message_content(td, dialog_id, media_.get(), MessageContentDupType::Copy, false,
+                                        MessageCopyOptions(true, false));
   }
   return result;
 }

@@ -27,6 +27,7 @@
 #include "td/telegram/ChatManager.h"
 #include "td/telegram/ChatTheme.h"
 #include "td/telegram/CommonDialogManager.h"
+#include "td/telegram/CommunityManager.h"
 #include "td/telegram/ConfigManager.h"
 #include "td/telegram/Dependencies.h"
 #include "td/telegram/DialogLocation.h"
@@ -242,7 +243,7 @@ class AddContactQuery final : public Td::ResultHandler {
   void on_error(Status status) final {
     promise_.set_error(std::move(status));
     td_->user_manager_->reload_contacts(true);
-    td_->messages_manager_->reget_dialog_action_bar(DialogId(user_id_), "AddContactQuery");
+    td_->messages_manager_->reload_dialog_action_bar(DialogId(user_id_), "AddContactQuery");
   }
 };
 
@@ -345,7 +346,7 @@ class AcceptContactQuery final : public Td::ResultHandler {
   void on_error(Status status) final {
     promise_.set_error(std::move(status));
     td_->user_manager_->reload_contacts(true);
-    td_->messages_manager_->reget_dialog_action_bar(DialogId(user_id_), "AcceptContactQuery");
+    td_->messages_manager_->reload_dialog_action_bar(DialogId(user_id_), "AcceptContactQuery");
   }
 };
 
@@ -1216,6 +1217,82 @@ class ToggleBotUsernameQuery final : public Td::ResultHandler {
   }
 };
 
+class AddBotUsernameQuery final : public Td::ResultHandler {
+  Promise<Unit> promise_;
+  UserId bot_user_id_;
+
+ public:
+  explicit AddBotUsernameQuery(Promise<Unit> &&promise) : promise_(std::move(promise)) {
+  }
+
+  void send(UserId bot_user_id, const string &username) {
+    bot_user_id_ = bot_user_id;
+    auto r_input_user = td_->user_manager_->get_input_user(bot_user_id_);
+    if (r_input_user.is_error()) {
+      return on_error(r_input_user.move_as_error());
+    }
+    send_query(G()->net_query_creator().create(telegram_api::bots_addUsername(r_input_user.move_as_ok(), username),
+                                               {{bot_user_id_}}));
+  }
+
+  void on_result(BufferSlice packet) final {
+    auto result_ptr = fetch_result<telegram_api::bots_addUsername>(packet);
+    if (result_ptr.is_error()) {
+      return on_error(result_ptr.move_as_error());
+    }
+
+    bool result = result_ptr.ok();
+    LOG(DEBUG) << "Receive result for AddBotUsernameQuery: " << result;
+    promise_.set_value(Unit());
+  }
+
+  void on_error(Status status) final {
+    if (status.message() == "USERNAME_NOT_MODIFIED") {
+      return;
+    }
+    td_->user_manager_->reload_user(bot_user_id_, Promise<Unit>(), "AddBotUsernameQuery");
+    promise_.set_error(std::move(status));
+  }
+};
+
+class RemoveBotUsernameQuery final : public Td::ResultHandler {
+  Promise<Unit> promise_;
+  UserId bot_user_id_;
+
+ public:
+  explicit RemoveBotUsernameQuery(Promise<Unit> &&promise) : promise_(std::move(promise)) {
+  }
+
+  void send(UserId bot_user_id, const string &username) {
+    bot_user_id_ = bot_user_id;
+    auto r_input_user = td_->user_manager_->get_input_user(bot_user_id_);
+    if (r_input_user.is_error()) {
+      return on_error(r_input_user.move_as_error());
+    }
+    send_query(G()->net_query_creator().create(telegram_api::bots_removeUsername(r_input_user.move_as_ok(), username),
+                                               {{bot_user_id_}}));
+  }
+
+  void on_result(BufferSlice packet) final {
+    auto result_ptr = fetch_result<telegram_api::bots_removeUsername>(packet);
+    if (result_ptr.is_error()) {
+      return on_error(result_ptr.move_as_error());
+    }
+
+    bool result = result_ptr.ok();
+    LOG(DEBUG) << "Receive result for RemoveBotUsernameQuery: " << result;
+    promise_.set_value(Unit());
+  }
+
+  void on_error(Status status) final {
+    if (status.message() == "USERNAME_NOT_MODIFIED") {
+      return;
+    }
+    td_->user_manager_->reload_user(bot_user_id_, Promise<Unit>(), "RemoveBotUsernameQuery");
+    promise_.set_error(std::move(status));
+  }
+};
+
 class ReorderBotUsernamesQuery final : public Td::ResultHandler {
   Promise<Unit> promise_;
   UserId bot_user_id_;
@@ -1828,6 +1905,7 @@ void UserManager::User::store(StorerT &storer) const {
   bool has_bot_verification_icon = bot_verification_icon.is_valid();
   bool has_paid_message_star_count = paid_message_star_count != 0;
   bool has_peer_color_collectible = peer_color_collectible != nullptr;
+  bool has_linked_community_id = linked_community_id.is_valid();
   BEGIN_STORE_FLAGS();
   STORE_FLAG(is_received);
   STORE_FLAG(is_verified);
@@ -1885,6 +1963,10 @@ void UserManager::User::store(StorerT &storer) const {
     STORE_FLAG(can_manage_bots);  // 20
     STORE_FLAG(is_guestchat_bot);
     STORE_FLAG(is_guard_bot);
+    STORE_FLAG(has_linked_community_id);
+    STORE_FLAG(is_noforwards_inited);
+    STORE_FLAG(noforwards_my_enabled);  // 25
+    STORE_FLAG(noforwards_peer_enabled);
     END_STORE_FLAGS();
   }
   store(first_name, storer);
@@ -1953,6 +2035,9 @@ void UserManager::User::store(StorerT &storer) const {
   if (has_peer_color_collectible) {
     store(peer_color_collectible, storer);
   }
+  if (has_linked_community_id) {
+    store(linked_community_id, storer);
+  }
 }
 
 template <class ParserT>
@@ -1982,6 +2067,7 @@ void UserManager::User::parse(ParserT &parser) {
   bool has_bot_verification_icon = false;
   bool has_paid_message_star_count = false;
   bool has_peer_color_collectible = false;
+  bool has_linked_community_id = false;
   BEGIN_PARSE_FLAGS();
   PARSE_FLAG(is_received);
   PARSE_FLAG(is_verified);
@@ -2039,6 +2125,10 @@ void UserManager::User::parse(ParserT &parser) {
     PARSE_FLAG(can_manage_bots);
     PARSE_FLAG(is_guestchat_bot);
     PARSE_FLAG(is_guard_bot);
+    PARSE_FLAG(has_linked_community_id);
+    PARSE_FLAG(is_noforwards_inited);
+    PARSE_FLAG(noforwards_my_enabled);
+    PARSE_FLAG(noforwards_peer_enabled);
     END_PARSE_FLAGS();
   }
   parse(first_name, parser);
@@ -2135,6 +2225,9 @@ void UserManager::User::parse(ParserT &parser) {
   if (has_peer_color_collectible) {
     parse(peer_color_collectible, parser);
   }
+  if (has_linked_community_id) {
+    parse(linked_community_id, parser);
+  }
 
   if (!check_utf8(first_name)) {
     LOG(ERROR) << "Have invalid first name \"" << first_name << '"';
@@ -2205,6 +2298,7 @@ void UserManager::UserFull::store(StorerT &storer) const {
   bool has_first_saved_music_file_id = first_saved_music_file_id != FileId();
   bool has_note = !note.text.empty();
   bool has_manager_bot_user_id = bot_info != nullptr && bot_info->manager_bot_user_id != UserId();
+  bool has_linked_community_id = linked_community_id.is_valid();
   BEGIN_STORE_FLAGS();
   STORE_FLAG(has_about);
   STORE_FLAG(is_blocked);
@@ -2264,6 +2358,7 @@ void UserManager::UserFull::store(StorerT &storer) const {
     STORE_FLAG(noforwards_peer_enabled);
     STORE_FLAG(has_manager_bot_user_id);
     STORE_FLAG(unofficial_security_risk);
+    STORE_FLAG(has_linked_community_id);
     END_STORE_FLAGS();
   }
   if (has_about) {
@@ -2372,6 +2467,9 @@ void UserManager::UserFull::store(StorerT &storer) const {
   if (has_manager_bot_user_id) {
     store(bot_info->manager_bot_user_id, storer);
   }
+  if (has_linked_community_id) {
+    store(linked_community_id, storer);
+  }
 }
 
 template <class ParserT>
@@ -2415,6 +2513,7 @@ void UserManager::UserFull::parse(ParserT &parser) {
   bool has_first_saved_music_file_id = false;
   bool has_note = false;
   bool has_manager_bot_user_id = false;
+  bool has_linked_community_id = false;
   BEGIN_PARSE_FLAGS();
   PARSE_FLAG(has_about);
   PARSE_FLAG(is_blocked);
@@ -2474,6 +2573,7 @@ void UserManager::UserFull::parse(ParserT &parser) {
     PARSE_FLAG(noforwards_peer_enabled);
     PARSE_FLAG(has_manager_bot_user_id);
     PARSE_FLAG(unofficial_security_risk);
+    PARSE_FLAG(has_linked_community_id);
     END_PARSE_FLAGS();
   }
   if (has_about) {
@@ -2585,6 +2685,9 @@ void UserManager::UserFull::parse(ParserT &parser) {
   }
   if (has_manager_bot_user_id) {
     parse(add_bot_info()->manager_bot_user_id, parser);
+  }
+  if (has_linked_community_id) {
+    parse(linked_community_id, parser);
   }
 }
 
@@ -3404,6 +3507,7 @@ UserId UserManager::on_get_user(telegram_api::object_ptr<telegram_api::User> &&u
   PeerColor profile_peer_color(user->profile_color_);
   on_update_user_profile_colors(u, user_id, profile_peer_color.accent_color_id_,
                                 profile_peer_color.background_custom_emoji_id_);
+  on_update_user_linked_community_id(u, user_id, CommunityId(user->linked_community_id_));
   if (is_me_regular_user) {
     if (is_received) {
       on_update_user_stories_hidden(u, user_id, stories_hidden);
@@ -3741,6 +3845,29 @@ void UserManager::on_update_user_profile_colors(User *u, UserId user_id, AccentC
     u->profile_background_custom_emoji_id = background_custom_emoji_id;
     u->is_accent_color_changed = true;
     u->is_changed = true;
+  }
+}
+
+void UserManager::on_update_user_linked_community_id(UserId user_id, CommunityId linked_community_id) {
+  User *u = get_user_force(user_id, "on_update_user_linked_community_id");
+  if (u != nullptr) {
+    on_update_user_linked_community_id(u, user_id, linked_community_id);
+    update_user(u, user_id);
+  }
+  auto user_full = get_user_full_force(user_id, "on_update_user_linked_community_id");
+  if (user_full != nullptr) {
+    on_update_user_full_linked_community_id(user_full, linked_community_id);
+    update_user_full(user_full, user_id, "on_update_user_linked_community_id");
+  }
+}
+
+void UserManager::on_update_user_linked_community_id(User *u, UserId user_id, CommunityId linked_community_id) {
+  if (!linked_community_id.is_valid() || !is_user_bot(u)) {
+    linked_community_id = CommunityId();
+  }
+  if (u->linked_community_id != linked_community_id) {
+    u->linked_community_id = linked_community_id;
+    u->need_save_to_database = true;
   }
 }
 
@@ -4402,7 +4529,7 @@ void UserManager::on_update_user_full_need_phone_number_privacy_exception(
   CHECK(user_full != nullptr);
   if (need_phone_number_privacy_exception) {
     const User *u = get_user(user_id);
-    if (u == nullptr || u->is_contact || user_id == get_my_id()) {
+    if (u == nullptr || u->is_deleted || u->is_contact || user_id == get_my_id()) {
       need_phone_number_privacy_exception = false;
     }
   }
@@ -4478,14 +4605,33 @@ void UserManager::on_update_user_noforwards(UserId user_id, bool update_my, bool
   if (user_full == nullptr) {
     return;
   }
-  on_update_user_full_noforwards(user_full, update_my, noforwards_my_enabled, update_peer, noforwards_peer_enabled);
+  on_update_user_full_noforwards(user_full, get_user_force(user_id, "on_update_user_noforwards"), user_id, update_my,
+                                 noforwards_my_enabled, update_peer, noforwards_peer_enabled);
   update_user_full(user_full, user_id, "on_update_user_noforwards");
 }
 
-void UserManager::on_update_user_full_noforwards(UserFull *user_full, bool update_my, bool noforwards_my_enabled,
-                                                 bool update_peer, bool noforwards_peer_enabled) const {
+void UserManager::on_update_user_full_noforwards(UserFull *user_full, User *u, UserId user_id, bool update_my,
+                                                 bool noforwards_my_enabled, bool update_peer,
+                                                 bool noforwards_peer_enabled) {
   CHECK(user_full != nullptr);
   bool old_noforwards = user_full->noforwards_my_enabled || user_full->noforwards_peer_enabled;
+  if (u != nullptr && ((update_my && update_peer) || u->is_noforwards_inited)) {
+    if (update_my && u->noforwards_my_enabled != noforwards_my_enabled) {
+      u->noforwards_my_enabled = noforwards_my_enabled;
+      u->need_save_to_database = true;
+    }
+    if (update_peer && u->noforwards_peer_enabled != noforwards_peer_enabled) {
+      u->noforwards_peer_enabled = noforwards_peer_enabled;
+      u->need_save_to_database = true;
+    }
+    if (!u->is_noforwards_inited) {
+      u->is_noforwards_inited = true;
+      u->need_save_to_database = true;
+    }
+    if (u->need_save_to_database) {
+      update_user(u, user_id);
+    }
+  }
   if (update_my && user_full->noforwards_my_enabled != noforwards_my_enabled) {
     user_full->noforwards_my_enabled = noforwards_my_enabled;
     user_full->need_save_to_database = true;
@@ -4587,6 +4733,14 @@ void UserManager::on_update_user_full_can_manage_emoji_status(UserFull *user_ful
   CHECK(user_full != nullptr);
   if (user_full->can_manage_emoji_status != can_manage_emoji_status) {
     user_full->can_manage_emoji_status = can_manage_emoji_status;
+    user_full->is_changed = true;
+  }
+}
+
+void UserManager::on_update_user_full_linked_community_id(UserFull *user_full, CommunityId linked_community_id) {
+  CHECK(user_full != nullptr);
+  if (user_full->linked_community_id != linked_community_id) {
+    user_full->linked_community_id = linked_community_id;
     user_full->is_changed = true;
   }
 }
@@ -5068,7 +5222,7 @@ UserManager::User *UserManager::get_user_force(UserId user_id, const char *sourc
         false, need_apply_min_photo, false, false, false, false, 0, false, false, false, false, false, false, false,
         false, false, false, false, false, user_id.get(), 1, first_name, string(), username, phone_number,
         std::move(profile_photo), nullptr, bot_info_version, Auto(), string(), string(), nullptr,
-        vector<telegram_api::object_ptr<telegram_api::username>>(), nullptr, nullptr, nullptr, 0, 0, 0);
+        vector<telegram_api::object_ptr<telegram_api::username>>(), nullptr, nullptr, nullptr, 0, 0, 0, 0);
     on_get_user(std::move(user), "get_user_force");
     u = get_user(user_id);
     CHECK(u != nullptr && u->is_received);
@@ -5575,7 +5729,7 @@ RestrictedRights UserManager::get_user_default_permissions(UserId user_id) const
     return RestrictedRights::restrict_all();
   }
   return RestrictedRights(true, true, true, true, true, true, true, true, true, true, true, true, true, false, false,
-                          true, false, false, true, ChannelType::Unknown);
+                          true, false, false, true, true, ChannelType::Unknown);
 }
 
 RestrictedRights UserManager::get_secret_chat_default_permissions(SecretChatId secret_chat_id) const {
@@ -5584,7 +5738,7 @@ RestrictedRights UserManager::get_secret_chat_default_permissions(SecretChatId s
     return RestrictedRights::restrict_all();
   }
   return RestrictedRights(true, true, true, true, true, true, true, true, true, true, true, true, true, false, false,
-                          false, false, false, false, ChannelType::Unknown);
+                          false, false, false, false, true, ChannelType::Unknown);
 }
 
 td_api::object_ptr<td_api::emojiStatus> UserManager::get_user_emoji_status_object(UserId user_id) const {
@@ -5605,6 +5759,10 @@ td_api::object_ptr<td_api::emojiStatus> UserManager::get_secret_chat_emoji_statu
 }
 
 bool UserManager::get_user_has_protected_content_force(UserId user_id) {
+  auto u = get_user_force(user_id, "get_user_has_protected_content_force");
+  if (u != nullptr && u->is_noforwards_inited) {
+    return u->noforwards_my_enabled || u->noforwards_peer_enabled;
+  }
   auto user_full = get_user_full_force(user_id, "get_user_has_protected_content_force");
   if (user_full != nullptr) {
     return user_full->noforwards_my_enabled || user_full->noforwards_peer_enabled;
@@ -5613,6 +5771,10 @@ bool UserManager::get_user_has_protected_content_force(UserId user_id) {
 }
 
 bool UserManager::get_user_has_protected_content(UserId user_id) const {
+  auto u = get_user(user_id);
+  if (u != nullptr && u->is_noforwards_inited) {
+    return u->noforwards_my_enabled || u->noforwards_peer_enabled;
+  }
   auto user_full = get_user_full(user_id);
   if (user_full != nullptr) {
     return user_full->noforwards_my_enabled || user_full->noforwards_peer_enabled;
@@ -5621,6 +5783,10 @@ bool UserManager::get_user_has_protected_content(UserId user_id) const {
 }
 
 bool UserManager::get_user_has_protected_content_force_by_me(UserId user_id) {
+  auto u = get_user_force(user_id, "get_user_has_protected_content_force_by_me");
+  if (u != nullptr && u->is_noforwards_inited) {
+    return u->noforwards_my_enabled;
+  }
   auto user_full = get_user_full_force(user_id, "get_user_has_protected_content_force_by_me");
   if (user_full != nullptr) {
     return user_full->noforwards_my_enabled;
@@ -5629,6 +5795,10 @@ bool UserManager::get_user_has_protected_content_force_by_me(UserId user_id) {
 }
 
 bool UserManager::get_user_has_protected_content_force_by_other(UserId user_id) {
+  auto u = get_user_force(user_id, "get_user_has_protected_content_force_by_other");
+  if (u != nullptr && u->is_noforwards_inited) {
+    return u->noforwards_peer_enabled;
+  }
   auto user_full = get_user_full_force(user_id, "get_user_has_protected_content_force_by_other");
   if (user_full != nullptr) {
     return user_full->noforwards_peer_enabled;
@@ -6022,7 +6192,8 @@ void UserManager::set_profile_photo_impl(UserId user_id, const td_api::object_pt
 
   auto file_type = is_animation ? FileType::Animation : FileType::Photo;
   TRY_RESULT_PROMISE(promise, file_id,
-                     td_->file_manager_->get_input_file_id(file_type, *input_file, DialogId(user_id), false, false));
+                     td_->file_manager_->get_input_file_id(file_type, *input_file, DialogId(user_id), false, false,
+                                                           false, false, false, true));
 
   upload_profile_photo(user_id, {file_id, FileManager::get_internal_upload_id()}, is_fallback, only_suggest,
                        is_animation, main_frame_timestamp, std::move(promise));
@@ -6082,6 +6253,10 @@ void UserManager::upload_profile_photo(UserId user_id, FileUploadId file_upload_
 
 void UserManager::on_upload_profile_photo(FileUploadId file_upload_id,
                                           telegram_api::object_ptr<telegram_api::InputFile> input_file) {
+  if (G()->close_flag()) {
+    return;
+  }
+
   auto it = being_uploaded_profile_photos_.find(file_upload_id);
   CHECK(it != being_uploaded_profile_photos_.end());
   UserId user_id = it->second.user_id;
@@ -6105,7 +6280,7 @@ void UserManager::on_upload_profile_photo(FileUploadId file_upload_id,
       return promise.set_error(400, "Failed to reupload the file");
     }
 
-    // delete file reference and forcely reupload the file
+    // delete file reference and forcibly reupload the file
     if (is_animation) {
       CHECK(file_view.get_type() == FileType::Animation);
       LOG_CHECK(main_remote_location->is_common()) << *main_remote_location;
@@ -6128,6 +6303,10 @@ void UserManager::on_upload_profile_photo(FileUploadId file_upload_id,
 }
 
 void UserManager::on_upload_profile_photo_error(FileUploadId file_upload_id, Status status) {
+  if (G()->close_flag()) {
+    return;
+  }
+
   LOG(INFO) << "Profile photo " << file_upload_id << " has upload error " << status;
   CHECK(status.is_error());
 
@@ -6541,6 +6720,44 @@ void UserManager::on_update_active_usernames_order(UserId user_id, vector<string
   on_update_user_usernames(u, user_id, u->usernames.reorder_to(std::move(usernames)));
   update_user(u, user_id);
   promise.set_value(Unit());
+}
+
+void UserManager::add_bot_username(UserId bot_user_id, string &&username, Promise<Unit> &&promise) {
+  TRY_RESULT_PROMISE(promise, bot_data, get_bot_data(bot_user_id));
+  if (!bot_data.can_be_edited) {
+    return promise.set_error(400, "The bot can't be edited");
+  }
+  if (!td_->option_manager_->get_option_boolean("is_premium")) {
+    return promise.set_error(400, "The method is available only to Telegram Premium users");
+  }
+  User *u = get_user(bot_user_id);
+  CHECK(u != nullptr);
+  if (!u->usernames.can_add_secondary(username)) {
+    return promise.set_error(400, "Can't add secondary username");
+  }
+  on_update_user_usernames(u, bot_user_id, u->usernames.add_secondary(username));
+  update_user(u, bot_user_id);
+  td_->create_handler<AddBotUsernameQuery>(std::move(promise))->send(bot_user_id, username);
+}
+
+void UserManager::delete_bot_username(UserId bot_user_id, Promise<Unit> &&promise) {
+  TRY_RESULT_PROMISE(promise, bot_data, get_bot_data(bot_user_id));
+  if (!bot_data.can_be_edited) {
+    return promise.set_error(400, "The bot can't be edited");
+  }
+  User *u = get_user(bot_user_id);
+  CHECK(u != nullptr);
+  const auto &deletable_usernames = u->usernames.get_deletable_usernames();
+  if (deletable_usernames.empty()) {
+    return promise.set_value(Unit());
+  }
+  auto username = deletable_usernames[0];
+  if (!u->usernames.can_delete_secondary(username)) {
+    return promise.set_error(400, "Can't delete secondary username");
+  }
+  on_update_user_usernames(u, bot_user_id, u->usernames.delete_secondary(username));
+  update_user(u, bot_user_id);
+  td_->create_handler<RemoveBotUsernameQuery>(std::move(promise))->send(bot_user_id, username);
 }
 
 void UserManager::toggle_bot_username_is_active(UserId bot_user_id, string &&username, bool is_active,
@@ -7127,8 +7344,14 @@ void UserManager::check_is_saved_music(FileId file_id, Promise<Unit> &&promise) 
   return promise.set_value(Unit());
 }
 
-void UserManager::add_new_saved_music(const td_api::object_ptr<td_api::InputFile> &audio, int32 duration,
-                                      const string &title, const string &performer, Promise<Unit> &&promise) {
+void UserManager::add_new_saved_music(td_api::object_ptr<td_api::inputAudio> &&input_audio, Promise<Unit> &&promise) {
+  if (input_audio == nullptr) {
+    return promise.set_error(400, "Audio must be non-empty");
+  }
+  if (!clean_input_string(input_audio->title_) || !clean_input_string(input_audio->performer_)) {
+    return promise.set_error(400, "Strings must be encoded in UTF-8");
+  }
+  auto audio = std::move(input_audio->audio_);
   TRY_RESULT_PROMISE(promise, file_id,
                      td_->file_manager_->get_input_file_id(FileType::Audio, audio, DialogId(), false, false));
   CHECK(file_id.is_valid());
@@ -7147,8 +7370,8 @@ void UserManager::add_new_saved_music(const td_api::object_ptr<td_api::InputFile
     return add_saved_music(file_id, FileId(), std::move(promise));
   }
 
-  td_->audios_manager_->create_audio(file_id, string(), PhotoSize(), string(), string(), duration, title, performer, 0,
-                                     false);
+  td_->audios_manager_->create_audio(file_id, string(), PhotoSize(), string(), string(), input_audio->duration_,
+                                     input_audio->title_, input_audio->performer_, 0, false);
   auto upload_promise = PromiseCreator::lambda(
       [actor_id = actor_id(this), file_id, promise = std::move(promise)](Result<Unit> &&result) mutable {
         if (result.is_error()) {
@@ -7175,6 +7398,9 @@ void UserManager::upload_saved_music(FileId file_id, Promise<Unit> &&promise) {
 
 void UserManager::on_upload_saved_music(FileUploadId file_upload_id,
                                         telegram_api::object_ptr<telegram_api::InputFile> input_file) {
+  if (G()->close_flag()) {
+    return;
+  }
   LOG(INFO) << "Profile audio " << file_upload_id << " has been uploaded";
 
   auto it = being_uploaded_saved_music_files_.find(file_upload_id);
@@ -7187,7 +7413,6 @@ void UserManager::on_upload_saved_music(FileUploadId file_upload_id,
 
 void UserManager::on_upload_saved_music_error(FileUploadId file_upload_id, Status status) {
   if (G()->close_flag()) {
-    // do not fail upload if closing
     return;
   }
 
@@ -8973,7 +9198,8 @@ void UserManager::on_get_user_full(telegram_api::object_ptr<telegram_api::userFu
       user_full, StarManager::get_star_count(user->settings_->charge_paid_message_stars_));
   on_update_user_full_send_paid_message_stars(user_full, StarManager::get_star_count(user->send_paid_messages_stars_));
   on_update_user_full_wallpaper_overridden(user_full, user->wallpaper_overridden_);
-  on_update_user_full_noforwards(user_full, true, user->noforwards_my_enabled_, true, user->noforwards_peer_enabled_);
+  on_update_user_full_noforwards(user_full, u, user_id, true, user->noforwards_my_enabled_, true,
+                                 user->noforwards_peer_enabled_);
   on_update_user_full_note(user_full,
                            get_formatted_text(this, std::move(user->note_), true, false, "on_get_user_full note"));
 
@@ -9169,6 +9395,7 @@ void UserManager::on_get_user_full(telegram_api::object_ptr<telegram_api::userFu
     }
   }
 
+  on_update_user_full_linked_community_id(user_full, u->linked_community_id);
   on_update_user_full_can_manage_emoji_status(user_full, user->bot_can_manage_emoji_status_);
   if (personal_channel_id != ChannelId() &&
       td_->chat_manager_->get_channel_type(personal_channel_id) != ChannelType::Broadcast) {
@@ -9327,6 +9554,7 @@ void UserManager::on_load_user_full_from_database(UserId user_id, string value) 
 
   Dependencies dependencies;
   dependencies.add(user_id);
+  dependencies.add(user_full->linked_community_id);
   if (user_full->business_info != nullptr) {
     user_full->business_info->add_dependencies(dependencies);
   }
@@ -9368,12 +9596,20 @@ void UserManager::on_load_user_full_from_database(UserId user_id, string value) 
   td_->group_call_manager_->on_update_dialog_about(DialogId(user_id), user_full->about, false);
 
   user_full->is_update_user_full_sent = true;
-  update_user_full(user_full, user_id, "on_load_user_full_from_database 3", true);
-
   if (is_user_deleted(u)) {
     drop_user_full(user_id);
   } else if (user_full->expires_at == 0.0) {
     reload_user_full(user_id, Auto(), "on_load_user_full_from_database 4");
+  }
+  update_user_full(user_full, user_id, "on_load_user_full_from_database 3", true);
+
+  if (u->noforwards_my_enabled != user_full->noforwards_my_enabled ||
+      u->noforwards_peer_enabled != user_full->noforwards_peer_enabled || !u->is_noforwards_inited) {
+    u->noforwards_my_enabled = user_full->noforwards_my_enabled;
+    u->noforwards_peer_enabled = user_full->noforwards_peer_enabled;
+    u->is_noforwards_inited = true;
+    u->need_save_to_database = true;
+    update_user(u, user_id);
   }
 }
 
@@ -9382,6 +9618,7 @@ void UserManager::register_noforwards_request(MessageFullId message_full_id, int
   auto duration = td_->option_manager_->get_option_integer("has_protected_content_disable_request_duration");
   auto left_time = message_date + duration - G()->unix_time();
   if (left_time > 0 && !message_id.is_scheduled()) {
+    CHECK(message_id != MessageId());
     auto &request_id = noforwards_request_ids_[message_full_id];
     CHECK(request_id == 0);
     request_id = ++current_noforwards_request_id_;
@@ -9520,6 +9757,7 @@ void UserManager::drop_user_full(UserId user_id) {
   user_full->common_chat_count = 0;
   user_full->personal_channel_id = ChannelId();
   user_full->main_profile_tab = ProfileTab::Default;
+  user_full->linked_community_id = CommunityId();
   user_full->business_info = nullptr;
   user_full->bot_verification = nullptr;
   user_full->star_rating = nullptr;
@@ -10099,16 +10337,10 @@ void UserManager::update_user_full(UserFull *user_full, UserId user_id, const ch
   }
   if (true) {
     vector<FileId> file_ids;
-    if (!user_full->personal_photo.is_empty()) {
-      append(file_ids, photo_get_file_ids(user_full->personal_photo));
-    }
-    if (!user_full->fallback_photo.is_empty()) {
-      append(file_ids, photo_get_file_ids(user_full->fallback_photo));
-    }
+    photo_append_file_ids(user_full->personal_photo, file_ids);
+    photo_append_file_ids(user_full->fallback_photo, file_ids);
     if (user_full->bot_info != nullptr) {
-      if (!user_full->bot_info->description_photo.is_empty()) {
-        append(file_ids, photo_get_file_ids(user_full->bot_info->description_photo));
-      }
+      photo_append_file_ids(user_full->bot_info->description_photo, file_ids);
       if (user_full->bot_info->description_animation_file_id.is_valid()) {
         file_ids.push_back(user_full->bot_info->description_animation_file_id);
       }
@@ -10402,14 +10634,16 @@ td_api::object_ptr<td_api::userFullInfo> UserManager::get_user_full_info_object(
   return td_api::make_object<td_api::userFullInfo>(
       get_chat_photo_object(td_->file_manager_.get(), user_full->personal_photo),
       get_chat_photo_object(td_->file_manager_.get(), user_full->photo),
-      get_chat_photo_object(td_->file_manager_.get(), user_full->fallback_photo), block_list_id.get_block_list_object(),
-      user_full->can_be_called, user_full->supports_video_calls, user_full->has_private_calls,
-      !user_full->private_forward_name.empty(), voice_messages_forbidden, user_full->has_pinned_stories,
-      user_full->sponsored_enabled, user_full->need_phone_number_privacy_exception, user_full->wallpaper_overridden,
-      user_full->unofficial_security_risk, std::move(bio_object), user_full->birthdate.get_birthdate_object(),
-      personal_chat_id, user_full->gift_count, user_full->common_chat_count, user_full->charge_paid_message_stars,
-      user_full->send_paid_message_stars, user_full->gift_settings.get_gift_settings_object(),
-      std::move(bot_verification), get_profile_tab_object(user_full->main_profile_tab),
+      get_chat_photo_object(td_->file_manager_.get(), user_full->fallback_photo),
+      is_bot ? td_->community_manager_->get_community_id_object(user_full->linked_community_id, "userFullInfo") : 0,
+      block_list_id.get_block_list_object(), user_full->can_be_called, user_full->supports_video_calls,
+      user_full->has_private_calls, !user_full->private_forward_name.empty(), voice_messages_forbidden,
+      user_full->has_pinned_stories, user_full->sponsored_enabled, user_full->need_phone_number_privacy_exception,
+      user_full->wallpaper_overridden, user_full->unofficial_security_risk, std::move(bio_object),
+      user_full->birthdate.get_birthdate_object(), personal_chat_id, user_full->gift_count,
+      user_full->common_chat_count, user_full->charge_paid_message_stars, user_full->send_paid_message_stars,
+      user_full->gift_settings.get_gift_settings_object(), std::move(bot_verification),
+      get_profile_tab_object(user_full->main_profile_tab),
       td_->audios_manager_->get_audio_object(user_full->first_saved_music_file_id), std::move(user_rating),
       std::move(pending_user_rating), user_full->pending_star_rating_date, std::move(note), std::move(business_info),
       std::move(bot_info));

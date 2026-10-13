@@ -8,6 +8,7 @@
 
 #include "td/telegram/ChannelId.h"
 #include "td/telegram/DialogId.h"
+#include "td/telegram/EphemeralMessageFullId.h"
 #include "td/telegram/files/FileId.h"
 #include "td/telegram/files/FileSourceId.h"
 #include "td/telegram/MessageFullId.h"
@@ -75,6 +76,12 @@ class WebPagesManager final : public Actor {
 
   void unregister_quick_reply_web_page(WebPageId web_page_id, QuickReplyMessageFullId message_full_id,
                                        const char *source);
+
+  void register_welcome_message_web_page(WebPageId web_page_id, EphemeralMessageFullId message_full_id,
+                                         const char *source);
+
+  void unregister_welcome_message_web_page(WebPageId web_page_id, EphemeralMessageFullId message_full_id,
+                                           const char *source);
 
   void register_poll_web_pages(PollId poll_id, vector<WebPageId> &&web_page_ids);
 
@@ -161,8 +168,8 @@ class WebPagesManager final : public Actor {
   void on_get_web_page_preview_success(unique_ptr<GetWebPagePreviewOptions> &&options, WebPageId web_page_id,
                                        Promise<td_api::object_ptr<td_api::linkPreview>> &&promise);
 
-  void on_get_web_page_instant_view(WebPage *web_page, tl_object_ptr<telegram_api::page> &&page, int32 hash,
-                                    DialogId owner_dialog_id);
+  void on_get_web_page_instant_view(WebPageId web_page_id, WebPage *web_page, tl_object_ptr<telegram_api::page> &&page,
+                                    int32 hash, DialogId owner_dialog_id);
 
   void save_web_page(const WebPage *web_page, WebPageId web_page_id, bool from_binlog);
 
@@ -231,6 +238,9 @@ class WebPagesManager final : public Actor {
 
   FlatHashMap<WebPageId, FlatHashSet<QuickReplyMessageFullId, QuickReplyMessageFullIdHash>, WebPageIdHash>
       web_page_quick_reply_messages_;
+
+  FlatHashMap<WebPageId, FlatHashSet<EphemeralMessageFullId, EphemeralMessageFullIdHash>, WebPageIdHash>
+      web_page_welcome_messages_;
 
   FlatHashMap<WebPageId, FlatHashSet<PollId, PollIdHash>, WebPageIdHash> web_page_polls_;
   FlatHashMap<PollId, vector<WebPageId>, PollIdHash> poll_web_pages_;

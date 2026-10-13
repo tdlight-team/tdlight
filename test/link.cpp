@@ -168,12 +168,12 @@ static auto chat_administrator_rights(bool can_manage_chat, bool can_change_info
                                       bool can_restrict_members, bool can_pin_messages, bool can_manage_topics,
                                       bool can_promote_members, bool can_manage_video_chats, bool can_post_stories,
                                       bool can_edit_stories, bool can_delete_stories, bool can_manage_direct_messages,
-                                      bool can_manage_tags, bool is_anonymous) {
+                                      bool can_manage_tags, bool send_welcome_messages, bool is_anonymous) {
   return td::td_api::make_object<td::td_api::chatAdministratorRights>(
       can_manage_chat, can_change_info, can_post_messages, can_edit_messages, can_delete_messages, can_invite_users,
       can_restrict_members, can_pin_messages, can_manage_topics, can_promote_members, can_manage_video_chats,
       can_post_stories, can_edit_stories, can_delete_stories, can_manage_direct_messages, can_manage_tags,
-      is_anonymous);
+      send_welcome_messages, is_anonymous);
 }
 
 static auto settings(td::td_api::object_ptr<td::td_api::SettingsSection> section = nullptr) {
@@ -224,12 +224,12 @@ static auto language_settings(td::string subsection = td::string()) {
   return settings(td::td_api::make_object<td::td_api::settingsSectionLanguage>(subsection));
 }
 
-static auto my_stars(td::string subsection = td::string()) {
-  return settings(td::td_api::make_object<td::td_api::settingsSectionMyStars>(subsection));
+static auto my_grams() {
+  return settings(td::td_api::make_object<td::td_api::settingsSectionMyGrams>());
 }
 
-static auto my_toncoins() {
-  return settings(td::td_api::make_object<td::td_api::settingsSectionMyToncoins>());
+static auto my_stars(td::string subsection = td::string()) {
+  return settings(td::td_api::make_object<td::td_api::settingsSectionMyStars>(subsection));
 }
 
 static auto notification_settings(td::string subsection = td::string()) {
@@ -267,6 +267,17 @@ static auto settings_search() {
 static auto target_chat_chosen(bool allow_users, bool allow_bots, bool allow_groups, bool allow_channels) {
   return td::td_api::make_object<td::td_api::targetChatChosen>(
       td::td_api::make_object<td::td_api::targetChatTypes>(allow_users, allow_bots, allow_groups, allow_channels));
+}
+
+static td::td_api::object_ptr<td::td_api::tonConnectConnectRequest> ton_connect_connect_request(td::string manifest_url,
+                                                                                                td::string network,
+                                                                                                td::string payload) {
+  td::vector<td::td_api::object_ptr<td::td_api::TonConnectConnectItem>> items;
+  items.push_back(td::td_api::make_object<td::td_api::tonConnectConnectItemAddress>(network));
+  if (!payload.empty()) {
+    items.push_back(td::td_api::make_object<td::td_api::tonConnectConnectItemProof>(payload));
+  }
+  return td::td_api::make_object<td::td_api::tonConnectConnectRequest>(manifest_url, std::move(items));
 }
 
 static td::td_api::object_ptr<td::td_api::WebAppOpenMode> web_app_open_mode(bool is_compact, bool is_full_screen) {
@@ -508,6 +519,18 @@ static auto text_composition_style(const td::string &style_name) {
 
 static auto theme(const td::string &theme_name) {
   return td::td_api::make_object<td::td_api::internalLinkTypeTheme>(theme_name);
+}
+
+static auto ton_connect(td::int32 version, td::string dapp_client_id,
+                        td::td_api::object_ptr<td::td_api::tonConnectConnectRequest> &&request,
+                        td::string return_strategy, td::string rpc_request, td::string trace_id) {
+  return td::td_api::make_object<td::td_api::internalLinkTypeTonConnect>(version, dapp_client_id, std::move(request),
+                                                                         return_strategy, rpc_request, trace_id);
+}
+
+static auto ton_wallet_transfer(td::td_api::object_ptr<td::td_api::TonWalletTransferReceiver> &&receiver,
+                                td::int64 gram_amount) {
+  return td::td_api::make_object<td::td_api::internalLinkTypeTonWalletTransfer>(std::move(receiver), gram_amount);
 }
 
 static auto unknown_deep_link(const td::string &link) {
@@ -1407,6 +1430,108 @@ TEST(Link, parse_internal_link_part3) {
   parse_internal_link("tg:proxy?server=&port=80&secret=1234567890abcdef1234567890ABCDEF", unsupported_proxy());
   parse_internal_link("tg:proxy?server=%FF&port=80&secret=1234567890abcdef1234567890ABCDEF", unsupported_proxy());
 
+  parse_internal_link(
+      "t.me/"
+      "sendgrams?startapp=tonconnect-v__2-id__c745acd825f83bf7ef88d671ea69c90fd1c7e71f78b1079ec8ad3c231fed7a65-trace--"
+      "5Fid__01a0b488--2D27a9--2D7419--2D89bc--2D169fc31ba6fd-r__--7B--22manifestUrl--22--3A--22https--3A--2F--"
+      "2Ftonconnect--2Dsdk--2Ddemo--2Ddapp--2Evercel--2Eapp--2Ftonconnect--2Dmanifest--2Ejson--22--2C--22items--22--3A-"
+      "-5B--7B--22name--22--3A--22ton--5Faddr--22--7D--5D--7D-ret__none",
+      ton_connect(
+          2, "c745acd825f83bf7ef88d671ea69c90fd1c7e71f78b1079ec8ad3c231fed7a65",
+          ton_connect_connect_request("https://tonconnect-sdk-demo-dapp.vercel.app/tonconnect-manifest.json", "", ""),
+          "none", "", "01a0b488-27a9-7419-89bc-169fc31ba6fd"));
+  parse_internal_link(
+      "https://t.me/"
+      "sendgrams?startapp=tonconnect-v__2-id__c745acd825f83bf7ef88d671ea69c90fd1c7e71f78b1079ec8ad3c231fed7a65-r__--7B-"
+      "-22manifestUrl--22--3A--22https--3A--2F--2Ftonconnect--2Dsdk--2Ddemo--2Ddapp.vercel.app--2Ftonconnect--"
+      "2Dmanifest.json--22--2C--22items--22--3A--5B--7B--22name--22--3A--22ton--5Faddr--22--2C--22network--22--3A--22--"
+      "2D239--22--7D--2C--7B--22name--22--3A--22ton--5Fproof--22--2C--22payload--22--3A--22abacaba--22--7D--5D--7D-ret_"
+      "_"
+      "none-e__--7B--22request--22--3A--22none--22--7D-trace--5Fid__01a0b488--2D27a9--2D7419--2D89bc--2D169fc31ba6fd",
+      ton_connect(2, "c745acd825f83bf7ef88d671ea69c90fd1c7e71f78b1079ec8ad3c231fed7a65",
+                  ton_connect_connect_request("https://tonconnect-sdk-demo-dapp.vercel.app/tonconnect-manifest.json",
+                                              "-239", "abacaba"),
+                  "none", "{\"request\":\"none\"}", "01a0b488-27a9-7419-89bc-169fc31ba6fd"));
+
+  parse_internal_link(
+      "tg:sendgrams?v=2&id=c745acd825f83bf7ef88d671ea69c90fd1c7e71f78b1079ec8ad3c231fed7a65&trace%5Fid=01a0b488%2D27a9%"
+      "2D7419%2D89bc%2D169fc31ba6fd&r=%7B%22manifestUrl%22%3A%22https%3A%2F%2Ftonconnect%2Dsdk%2Ddemo%2Ddapp%2Evercel%"
+      "2Eapp%2Ftonconnect%2Dmanifest%2Ejson%22%2C%22items%22%3A%5B%7B%22name%22%3A%22ton%5Faddr%22%7D%5D%7D&ret=none",
+      ton_connect(
+          2, "c745acd825f83bf7ef88d671ea69c90fd1c7e71f78b1079ec8ad3c231fed7a65",
+          ton_connect_connect_request("https://tonconnect-sdk-demo-dapp.vercel.app/tonconnect-manifest.json", "", ""),
+          "none", "", "01a0b488-27a9-7419-89bc-169fc31ba6fd"));
+  parse_internal_link(
+      "tg://"
+      "sendgrams?v=2&id=c745acd825f83bf7ef88d671ea69c90fd1c7e71f78b1079ec8ad3c231fed7a65&r=%7B%22manifestUrl%22%3A%"
+      "22https%3A%2F%2Ftonconnect-sdk-demo-dapp.vercel.app%2Ftonconnect-manifest.json%22%2C%22items%22%3A%5B%7B%22name%"
+      "22%3A%22ton_addr%22%2C%22network%22%3A%22-239%22%7D%2C%7B%22name%22%3A%22ton_proof%22%2C%22payload%22%3A%"
+      "22abacaba%22%7D%5D%7D&ret=none&e=%7B%22request%22%3A%22none%22%7D&trace_id=01a0b488-27a9-7419-89bc-169fc31ba6fd",
+      ton_connect(2, "c745acd825f83bf7ef88d671ea69c90fd1c7e71f78b1079ec8ad3c231fed7a65",
+                  ton_connect_connect_request("https://tonconnect-sdk-demo-dapp.vercel.app/tonconnect-manifest.json",
+                                              "-239", "abacaba"),
+                  "none", "{\"request\":\"none\"}", "01a0b488-27a9-7419-89bc-169fc31ba6fd"));
+
+  parse_internal_link(
+      "tc://"
+      "?v=2&id=c745acd825f83bf7ef88d671ea69c90fd1c7e71f78b1079ec8ad3c231fed7a65&trace%5Fid=01a0b488%2D27a9%2D7419%"
+      "2D89bc%2D169fc31ba6fd&r=%7B%22manifestUrl%22%3A%22https%3A%2F%2Ftonconnect%2Dsdk%2Ddemo%2Ddapp%2Evercel%2Eapp%"
+      "2Ftonconnect%2Dmanifest%2Ejson%22%2C%22items%22%3A%5B%7B%22name%22%3A%22ton%5Faddr%22%7D%5D%7D&ret=none",
+      ton_connect(
+          2, "c745acd825f83bf7ef88d671ea69c90fd1c7e71f78b1079ec8ad3c231fed7a65",
+          ton_connect_connect_request("https://tonconnect-sdk-demo-dapp.vercel.app/tonconnect-manifest.json", "", ""),
+          "none", "", "01a0b488-27a9-7419-89bc-169fc31ba6fd"));
+
+  parse_internal_link("t.me/sendgrams?asdjlkass", ton_wallet_transfer(nullptr, 0));
+  parse_internal_link("t.me/sendgrams", ton_wallet_transfer(nullptr, 0));
+  parse_internal_link("t.me/sendgrams/", ton_wallet_transfer(nullptr, 0));
+  parse_internal_link("t.me/sendgrams?to=@mon", nullptr);
+  parse_internal_link(
+      "t.me/sendgrams?to=@monk",
+      ton_wallet_transfer(td::td_api::make_object<td::td_api::tonWalletTransferReceiverUser>("monk"), 0));
+  parse_internal_link("t.me/sendgrams?to=UQATQGPKFFH5ENzxW7hiFLdPYNPRcXAU-0PWloA5QETFZRMw=", nullptr);
+  parse_internal_link("t.me/sendgrams?to=UQATQGPKFFH5ENzxW7hiFLdPYNPRcXAU-0PWloA5QETFZRMw",
+                      ton_wallet_transfer(td::td_api::make_object<td::td_api::tonWalletTransferReceiverAddress>(
+                                              "UQATQGPKFFH5ENzxW7hiFLdPYNPRcXAU-0PWloA5QETFZRMw"),
+                                          0));
+  parse_internal_link("t.me/sendgrams?to=@monk&amount=8999999",
+                      ton_wallet_transfer(td::td_api::make_object<td::td_api::tonWalletTransferReceiverUser>("monk"),
+                                          8999999000000000));
+  parse_internal_link("t.me/sendgrams?to=@monk&amount=9000000", nullptr);
+  parse_internal_link("t.me/sendgrams?to=@monk&amount=-1", nullptr);
+  parse_internal_link(
+      "t.me/sendgrams?to=@monk&amount=0000000.000000000",
+      ton_wallet_transfer(td::td_api::make_object<td::td_api::tonWalletTransferReceiverUser>("monk"), 0));
+  parse_internal_link("t.me/sendgrams?to=@monk&amount=1234567.123456789",
+                      ton_wallet_transfer(td::td_api::make_object<td::td_api::tonWalletTransferReceiverUser>("monk"),
+                                          1234567123456789));
+  parse_internal_link("t.me/sendgrams?to=@monk&amount=1234567.91",
+                      ton_wallet_transfer(td::td_api::make_object<td::td_api::tonWalletTransferReceiverUser>("monk"),
+                                          1234567910000000));
+  parse_internal_link("t.me/sendgrams?to=@monk&amount=1.1234567891", nullptr);
+  parse_internal_link("t.me/sendgrams?to=@monk&amount=1,1", nullptr);
+  parse_internal_link("t.me/sendgrams?amount=1.1", nullptr);
+
+  parse_internal_link("tg:sendgrams?to=@monk&amount=8999999",
+                      ton_wallet_transfer(td::td_api::make_object<td::td_api::tonWalletTransferReceiverUser>("monk"),
+                                          8999999000000000));
+  parse_internal_link("tg:sendgrams?to=@monk&amount=9000000",
+                      unknown_deep_link("tg://sendgrams?to=@monk&amount=9000000"));
+  parse_internal_link("tg:sendgrams?to=@monk&amount=-1", unknown_deep_link("tg://sendgrams?to=@monk&amount=-1"));
+  parse_internal_link(
+      "tg:sendgrams?to=@monk&amount=0000000.000000000",
+      ton_wallet_transfer(td::td_api::make_object<td::td_api::tonWalletTransferReceiverUser>("monk"), 0));
+  parse_internal_link("tg:sendgrams?to=@monk&amount=1234567.123456789",
+                      ton_wallet_transfer(td::td_api::make_object<td::td_api::tonWalletTransferReceiverUser>("monk"),
+                                          1234567123456789));
+  parse_internal_link("tg:sendgrams?to=@monk&amount=1234567.91",
+                      ton_wallet_transfer(td::td_api::make_object<td::td_api::tonWalletTransferReceiverUser>("monk"),
+                                          1234567910000000));
+  parse_internal_link("tg:sendgrams?to=@monk&amount=1.1234567891",
+                      unknown_deep_link("tg://sendgrams?to=@monk&amount=1.1234567891"));
+  parse_internal_link("tg:sendgrams?to=@monk&amount=1,1", unknown_deep_link("tg://sendgrams?to=@monk&amount=1,1"));
+  parse_internal_link("tg:sendgrams?amount=1.1", unknown_deep_link("tg://sendgrams?amount=1.1"));
+
   parse_internal_link("t.me/socks?server=1.2.3.4&port=80", proxy_socks("1.2.3.4", 80, "", ""));
   parse_internal_link("t.me/socks?server=1.2.3.4&port=80adasdas", proxy_socks("1.2.3.4", 80, "", ""));
   parse_internal_link("t.me/socks?server=1.2.3.4&port=adasdas", unsupported_proxy());
@@ -1537,32 +1662,34 @@ TEST(Link, parse_internal_link_part3) {
       "tg:resolve?domain=username&startgroup=1&admin=delete_messages+anonymous",
       bot_start_in_group("username", "1",
                          chat_administrator_rights(true, false, false, false, true, false, false, false, false, false,
-                                                   false, false, false, false, false, false, true)));
+                                                   false, false, false, false, false, false, false, true)));
   parse_internal_link(
       "tg:resolve?domain=username&startgroup&admin=manage_chat+change_info+post_messages+edit_messages+delete_messages+"
       "invite_users+restrict_members+pin_messages+manage_topics+promote_members+manage_video_chats+post_stories+edit_"
-      "stories+delete_stories+anonymous+manage_direct_messages+manage_tags",
+      "stories+delete_stories+anonymous+manage_direct_messages+manage_tags+send_welcome_messages",
       bot_start_in_group("username", "",
                          chat_administrator_rights(true, true, false, false, true, true, true, true, true, true, true,
-                                                   true, true, true, false, true, true)));
+                                                   true, true, true, false, true, true, true)));
 
   parse_internal_link("tg:resolve?domain=username&startchannel", public_chat("username"));
   parse_internal_link("tg:resolve?domain=username&startchannel&admin=", public_chat("username"));
-  parse_internal_link("tg:resolve?domain=username&startchannel&admin=post_messages+manage_direct_messages",
-                      bot_add_to_channel("username", chat_administrator_rights(true, false, true, false, false, false,
-                                                                               false, false, false, false, false, false,
-                                                                               false, false, true, false, false)));
+  parse_internal_link(
+      "tg:resolve?domain=username&startchannel&admin=post_messages+manage_direct_messages",
+      bot_add_to_channel("username",
+                         chat_administrator_rights(true, false, true, false, false, false, false, false, false, false,
+                                                   false, false, false, false, true, false, false, false)));
   parse_internal_link(
       "tg:resolve?domain=username&startchannel&admin=post_messages+manage_direct_messages+restrict_members",
       bot_add_to_channel("username",
                          chat_administrator_rights(true, false, true, false, false, false, true, false, false, false,
-                                                   false, false, false, false, true, false, false)));
+                                                   false, false, false, false, true, false, false, false)));
   parse_internal_link(
       "tg:resolve?domain=username&startchannel&admin=manage_chat+change_info+post_messages+edit_messages+delete_"
       "messages+invite_users+restrict_members+pin_messages+manage_topics+promote_members+manage_video_chats+anonymous+"
-      "manage_direct_messages+manage_tags",
-      bot_add_to_channel("username", chat_administrator_rights(true, true, true, true, true, true, true, false, false,
-                                                               true, true, false, false, false, true, false, false)));
+      "manage_direct_messages+manage_tags+send_welcome_messages",
+      bot_add_to_channel("username",
+                         chat_administrator_rights(true, true, true, true, true, true, true, false, false, true, true,
+                                                   false, false, false, true, false, true, false)));
 
   parse_internal_link("t.me/username/0/a//s/as?startgroup=", bot_start_in_group("username", "", nullptr));
   parse_internal_link("t.me/username/aasdas/2?test=1&startgroup=#12312", bot_start_in_group("username", "", nullptr));
@@ -1581,29 +1708,31 @@ TEST(Link, parse_internal_link_part3) {
       "t.me/username?startgroup=1&admin=delete_messages+anonymous",
       bot_start_in_group("username", "1",
                          chat_administrator_rights(true, false, false, false, true, false, false, false, false, false,
-                                                   false, false, false, false, false, false, true)));
+                                                   false, false, false, false, false, false, false, true)));
   parse_internal_link(
       "t.me/"
       "username?startgroup&admin=manage_chat+change_info+post_messages+edit_messages+delete_messages+invite_users+"
       "restrict_members+pin_messages+manage_topics+promote_members+manage_video_chats+post_stories+edit_stories+delete_"
-      "stories+anonymous+manage_direct_messages+manage_tags",
+      "stories+anonymous+manage_direct_messages+manage_tags+send_welcome_messages",
       bot_start_in_group("username", "",
                          chat_administrator_rights(true, true, false, false, true, true, true, true, true, true, true,
-                                                   true, true, true, false, true, true)));
+                                                   true, true, true, false, true, true, true)));
 
   parse_internal_link("t.me/username?startchannel", public_chat("username"));
   parse_internal_link("t.me/username?startchannel&admin=", public_chat("username"));
-  parse_internal_link("t.me/username?startchannel&admin=post_messages",
-                      bot_add_to_channel("username", chat_administrator_rights(true, false, true, false, false, false,
-                                                                               false, false, false, false, false, false,
-                                                                               false, false, false, false, false)));
+  parse_internal_link(
+      "t.me/username?startchannel&admin=post_messages",
+      bot_add_to_channel("username",
+                         chat_administrator_rights(true, false, true, false, false, false, false, false, false, false,
+                                                   false, false, false, false, false, false, false, false)));
   parse_internal_link(
       "t.me/"
       "username?startchannel&admin=manage_chat+change_info+post_messages+edit_messages+delete_messages+invite_users+"
       "restrict_members+pin_messages+manage_topics+promote_members+manage_video_chats+post_stories+edit_stories+delete_"
-      "stories+anonymous+manage_direct_messages+manage_tags",
-      bot_add_to_channel("username", chat_administrator_rights(true, true, true, true, true, true, true, false, false,
-                                                               true, true, true, true, true, true, false, false)));
+      "stories+anonymous+manage_direct_messages+manage_tags+send_welcome_messages",
+      bot_add_to_channel("username",
+                         chat_administrator_rights(true, true, true, true, true, true, true, false, false, true, true,
+                                                   true, true, true, true, false, true, false)));
 }
 
 TEST(Link, parse_internal_link_part4) {
@@ -1851,6 +1980,18 @@ TEST(Link, parse_internal_link_part4) {
   parse_internal_link("t.me/telegrampassport?bot_id=12345&public_key=key&scope=asd&payload=nonce%FF",
                       public_chat("telegrampassport"));
 
+  parse_internal_link("t.me/GetPremium?ref=a", premium_features_page("tme_getpremium_a"));
+  parse_internal_link("t.me/GetPremium?ref=abcdef", premium_features_page("tme_getpremium_abcdef"));
+  parse_internal_link("t.me/GetPremium?ref=abcdeF", premium_features_page("tme_getpremium_abcdef"));
+  parse_internal_link("t.me/GetPremium/12/21312/312/312/3/123/12/312?ref=abcdef&ad=asd#123",
+                      premium_features_page("tme_getpremium_abcdef"));
+  parse_internal_link("t.me/getPREMIUM?ref=__abcdeZ0__9_", premium_features_page("tme_getpremium___abcdez0__9_"));
+  parse_internal_link("t.me/getPREMIUM?ref=abcdefghiJKLmnopqrstuvwxyz012345",
+                      premium_features_page("tme_getpremium_abcdefghijklmnopqrstuvwxyz012345"));
+  parse_internal_link("t.me/getPREMIUM?ref=abcdefghijklmnopqrstuvwxyz0123456", premium_features_page("tme_getpremium"));
+  parse_internal_link("t.me/getPREMIUM?ref=", premium_features_page("tme_getpremium"));
+  parse_internal_link("t.me/getPREMIUM?ref=!@", premium_features_page("tme_getpremium"));
+
   parse_internal_link("tg:premium_offer?ref=abcdef", premium_features_page("abcdef"));
   parse_internal_link("tg:premium_offer?ref=abc%30ef", premium_features_page("abc0ef"));
   parse_internal_link("tg:premium_offer?ref=abcde%ff", unknown_deep_link("tg://premium_offer?ref=abcde%ff"));
@@ -1983,15 +2124,25 @@ TEST(Link, parse_internal_link_part4) {
   parse_internal_link("tg://settings/stars/123123", my_stars());
   parse_internal_link("tg://settings/stars/earn#test", my_stars("earn"));
 
-  parse_internal_link("tg://ton", my_toncoins());
-  parse_internal_link("tg://ton?asdsa?D?SADasD?asD", my_toncoins());
-  parse_internal_link("tg://ton#test", my_toncoins());
-  parse_internal_link("tg://ton/#test", my_toncoins());
-  parse_internal_link("tg://ton/aadsa#test", my_toncoins());
-  parse_internal_link("tg://ton/theme#test", my_toncoins());
-  parse_internal_link("tg:ton/theme#test", my_toncoins());
-  parse_internal_link("tg://settings/ton", my_toncoins());
-  parse_internal_link("tg://settings/ton/12312", my_toncoins());
+  parse_internal_link("tg://ton", my_grams());
+  parse_internal_link("tg://ton?asdsa?D?SADasD?asD", my_grams());
+  parse_internal_link("tg://ton#test", my_grams());
+  parse_internal_link("tg://ton/#test", my_grams());
+  parse_internal_link("tg://ton/aadsa#test", my_grams());
+  parse_internal_link("tg://ton/theme#test", my_grams());
+  parse_internal_link("tg:ton/theme#test", my_grams());
+  parse_internal_link("tg://settings/ton", my_grams());
+  parse_internal_link("tg://settings/ton/12312", my_grams());
+
+  parse_internal_link("tg://grams", my_grams());
+  parse_internal_link("tg://grams?asdsa?D?SADasD?asD", my_grams());
+  parse_internal_link("tg://grams#test", my_grams());
+  parse_internal_link("tg://grams/#test", my_grams());
+  parse_internal_link("tg://grams/aadsa#test", my_grams());
+  parse_internal_link("tg://grams/theme#test", my_grams());
+  parse_internal_link("tg:grams/theme#test", my_grams());
+  parse_internal_link("tg://settings/grams", my_grams());
+  parse_internal_link("tg://settings/grams/12312", my_grams());
 
   parse_internal_link("tg://premium", unknown_deep_link("tg://premium"));
   parse_internal_link("tg://settings/premium", premium());

@@ -357,6 +357,9 @@ void MessageImportManager::upload_imported_messages(DialogId dialog_id, FileUplo
 
 void MessageImportManager::on_upload_imported_messages(FileUploadId file_upload_id,
                                                        telegram_api::object_ptr<telegram_api::InputFile> input_file) {
+  if (G()->close_flag()) {
+    return;
+  }
   LOG(INFO) << "Imported messages " << file_upload_id << " has been uploaded";
 
   auto it = being_uploaded_imported_messages_.find(file_upload_id);
@@ -386,7 +389,7 @@ void MessageImportManager::on_upload_imported_messages(FileUploadId file_upload_
     }
 
     CHECK(file_view.get_type() == FileType::Document);
-    // delete file reference and forcely reupload the file
+    // delete file reference and forcibly reupload the file
     auto file_reference = FileManager::extract_file_reference(main_remote_location->as_input_document());
     td_->file_manager_->delete_file_reference(file_upload_id.get_file_id(), file_reference);
     upload_imported_messages(dialog_id, file_upload_id, std::move(attached_file_upload_ids), true, std::move(promise),
@@ -401,7 +404,6 @@ void MessageImportManager::on_upload_imported_messages(FileUploadId file_upload_
 
 void MessageImportManager::on_upload_imported_messages_error(FileUploadId file_upload_id, Status status) {
   if (G()->close_flag()) {
-    // do not fail upload if closing
     return;
   }
 
@@ -495,7 +497,6 @@ telegram_api::object_ptr<telegram_api::InputMedia> MessageImportManager::get_fak
 void MessageImportManager::on_upload_imported_message_attachment(
     FileUploadId file_upload_id, telegram_api::object_ptr<telegram_api::InputFile> input_file) {
   if (G()->close_flag()) {
-    // do not fail upload if closing
     return;
   }
 
@@ -521,7 +522,7 @@ void MessageImportManager::on_upload_imported_message_attachment(
       return promise.set_error(400, "Failed to reupload the file");
     }
 
-    // delete file reference and forcely reupload the file
+    // delete file reference and forcibly reupload the file
     auto file_reference = file_view.get_type() == FileType::Photo
                               ? FileManager::extract_file_reference(main_remote_location->as_input_photo())
                               : FileManager::extract_file_reference(main_remote_location->as_input_document());
@@ -540,7 +541,6 @@ void MessageImportManager::on_upload_imported_message_attachment(
 
 void MessageImportManager::on_upload_imported_message_attachment_error(FileUploadId file_upload_id, Status status) {
   if (G()->close_flag()) {
-    // do not fail upload if closing
     return;
   }
 

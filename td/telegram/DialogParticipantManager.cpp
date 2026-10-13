@@ -481,6 +481,42 @@ class JoinChatQuery final : public Td::ResultHandler {
   }
 };
 
+class RequestChatJoinWebViewQuery final : public Td::ResultHandler {
+  Promise<td_api::object_ptr<td_api::webAppUrl>> promise_;
+
+ public:
+  explicit RequestChatJoinWebViewQuery(Promise<td_api::object_ptr<td_api::webAppUrl>> &&promise)
+      : promise_(std::move(promise)) {
+  }
+
+  void send(int64 query_id, const WebAppOpenParameters &parameters) {
+    int32 flags = 0;
+    auto theme_parameters = parameters.get_input_theme_parameters();
+    if (theme_parameters != nullptr) {
+      flags |= telegram_api::messages_requestChatJoinWebView::THEME_PARAMS_MASK;
+    }
+
+    send_query(G()->net_query_creator().create(telegram_api::messages_requestChatJoinWebView(
+        flags, query_id, std::move(theme_parameters), parameters.get_application_name())));
+  }
+
+  void on_result(BufferSlice packet) final {
+    auto result_ptr = fetch_result<telegram_api::messages_requestChatJoinWebView>(packet);
+    if (result_ptr.is_error()) {
+      return on_error(result_ptr.move_as_error());
+    }
+
+    auto ptr = result_ptr.move_as_ok();
+    LOG(INFO) << "Receive result for RequestChatJoinWebViewQuery: " << to_string(ptr);
+    LOG_IF(ERROR, ptr->query_id_ != 0) << "Receive " << to_string(ptr);
+    promise_.set_value(td_api::make_object<td_api::webAppUrl>(ptr->url_, ptr->same_origin_));
+  }
+
+  void on_error(Status status) final {
+    promise_.set_error(std::move(status));
+  }
+};
+
 class AddChatUserQuery final : public Td::ResultHandler {
   Promise<td_api::object_ptr<td_api::failedToAddMembers>> promise_;
   ChatId chat_id_;
@@ -1532,8 +1568,7 @@ void DialogParticipantManager::reload_dialog_administrators(
     Promise<td_api::object_ptr<td_api::chatAdministrators>> &&promise) {
   auto dialog_type = dialog_id.get_type();
   if (td_->dialog_manager_->is_monoforum_channel(dialog_id) ||
-      (dialog_type == DialogType::Chat &&
-       !td_->chat_manager_->get_chat_permissions(dialog_id.get_chat_id()).is_member())) {
+      (dialog_type == DialogType::Chat && !td_->chat_manager_->get_chat_status(dialog_id.get_chat_id()).is_member())) {
     return promise.set_value(td_api::make_object<td_api::chatAdministrators>());
   }
   auto query_promise = PromiseCreator::lambda(
@@ -2241,6 +2276,11 @@ void DialogParticipantManager::join_dialog(DialogId dialog_id,
   }
 }
 
+void DialogParticipantManager::get_chat_join_web_view_url(int64 query_id, WebAppOpenParameters parameters,
+                                                          Promise<td_api::object_ptr<td_api::webAppUrl>> &&promise) {
+  td_->create_handler<RequestChatJoinWebViewQuery>(std::move(promise))->send(query_id, parameters);
+}
+
 void DialogParticipantManager::add_dialog_participant(
     DialogId dialog_id, UserId user_id, int32 forward_limit,
     Promise<td_api::object_ptr<td_api::failedToAddMembers>> &&promise) {
@@ -2419,7 +2459,7 @@ void DialogParticipantManager::join_chat(ChatId chat_id,
   if (!td_->chat_manager_->get_chat_is_active(chat_id)) {
     return promise.set_error(400, "Chat is deactivated");
   }
-  if (td_->chat_manager_->get_chat_permissions(chat_id).is_banned()) {
+  if (td_->chat_manager_->get_chat_status(chat_id).is_banned()) {
     return promise.set_error(400, "User is banned from the chat");
   }
 
@@ -2547,8 +2587,8 @@ void DialogParticipantManager::delete_chat_participant(ChatId chat_id, UserId us
   }
 
   auto my_id = td_->user_manager_->get_my_id();
-  auto permissions = td_->chat_manager_->get_chat_permissions(chat_id);
-  if (permissions.is_left()) {
+  auto status = td_->chat_manager_->get_chat_permissions(chat_id);
+  if (status.is_left()) {
     if (user_id == my_id) {
       if (revoke_messages) {
         return td_->messages_manager_->delete_dialog_history(DialogId(chat_id), true, false, std::move(promise));
@@ -2560,7 +2600,7 @@ void DialogParticipantManager::delete_chat_participant(ChatId chat_id, UserId us
   }
   /* TODO
   if (user_id != my_id) {
-    if (!permissions.is_creator()) {  // creator can delete anyone
+    if (!status.is_creator()) {  // creator can delete anyone
       auto participant = get_chat_participant(chat_id, user_id);
       if (participant != nullptr) {  // if have no information about participant, just send request to the server
         if (c->everyone_is_administrator) {
@@ -2575,7 +2615,7 @@ void DialogParticipantManager::delete_chat_participant(ChatId chat_id, UserId us
                 400, "Only the creator of a basic group can kick group administrators");
           }
           // regular users can be kicked by administrators and their inviters
-          if (!permissions.is_administrator() && participant->inviter_user_id_ != my_id) {
+          if (!status.is_administrator() && participant->inviter_user_id_ != my_id) {
             return promise.set_error(400, "Need to be inviter of a user to kick it from a basic group");
           }
         }
@@ -2703,9 +2743,8 @@ void DialogParticipantManager::on_join_channel(
         auto user_id_object =
             td_->user_manager_->get_user_id_object(UserId(ptr->bot_id_), "chatJoinResultGuardBotApprovalRequired");
         for (auto &promise : promises) {
-          promise.set_value(td_api::make_object<td_api::chatJoinResultGuardBotApprovalRequired>(
-              user_id_object, td_api::make_object<td_api::webAppUrl>(ptr->webview_->url_, ptr->webview_->same_origin_),
-              ptr->webview_->query_id_));
+          promise.set_value(
+              td_api::make_object<td_api::chatJoinResultGuardBotApprovalRequired>(user_id_object, ptr->query_id_));
         }
         break;
       }

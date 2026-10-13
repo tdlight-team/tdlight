@@ -132,6 +132,9 @@ static td_api::object_ptr<td_api::PremiumFeature> get_premium_feature_object(Sli
   if (premium_feature == "ai_compose") {
     return td_api::make_object<td_api::premiumFeatureTextComposition>();
   }
+  if (premium_feature == "rich_formatting") {
+    return td_api::make_object<td_api::premiumFeatureRichMessages>();
+  }
   if (G()->is_test_dc()) {
     LOG(ERROR) << "Receive unsupported premium feature " << premium_feature;
   }
@@ -565,8 +568,8 @@ class CheckGiftCodeQuery final : public Td::ResultHandler {
         creator_dialog_id == DialogId() ? nullptr
                                         : get_message_sender_object(td_, creator_dialog_id, "premiumGiftCodeInfo"),
         result->date_, result->via_giveaway_, message_id.get(),
-        get_premium_duration_day_count(month_count) == result->days_ ? month_count : 0, result->days_,
-        td_->user_manager_->get_user_id_object(user_id, "premiumGiftCodeInfo"), result->used_date_));
+        get_premium_duration_day_count(month_count) == result->days_ || result->days_ % 30 == 0 ? month_count : 0,
+        result->days_, td_->user_manager_->get_user_id_object(user_id, "premiumGiftCodeInfo"), result->used_date_));
   }
 
   void on_error(Status status) final {
@@ -1075,6 +1078,8 @@ static string get_premium_source(const td_api::PremiumFeature *feature) {
       return "pm_noforwards";
     case td_api::premiumFeatureTextComposition::ID:
       return "ai_compose";
+    case td_api::premiumFeatureRichMessages::ID:
+      return "rich_formatting";
     default:
       UNREACHABLE();
   }
@@ -1267,13 +1272,14 @@ void get_premium_limit(const td_api::object_ptr<td_api::PremiumLimitType> &limit
 
 void get_premium_features(Td *td, const td_api::object_ptr<td_api::PremiumSource> &source,
                           Promise<td_api::object_ptr<td_api::premiumFeatures>> &&promise) {
-  auto premium_features = full_split(
-      G()->get_option_string("premium_features",
-                             "stories,more_upload,double_limits,business,last_seen,voice_to_text,faster_download,"
-                             "translations,animated_emoji,emoji_status,saved_tags,peer_colors,wallpapers,profile_badge,"
-                             "message_privacy,advanced_chat_management,no_ads,app_icons,infinite_reactions,animated_"
-                             "userpics,premium_stickers,effects,todo,paid_messages,pm_noforwards,ai_compose"),
-      ',');
+  auto premium_features =
+      full_split(G()->get_option_string(
+                     "premium_features",
+                     "stories,more_upload,double_limits,business,last_seen,voice_to_text,faster_download,"
+                     "translations,animated_emoji,emoji_status,saved_tags,peer_colors,wallpapers,profile_badge,"
+                     "message_privacy,advanced_chat_management,no_ads,app_icons,infinite_reactions,animated_"
+                     "userpics,premium_stickers,effects,todo,paid_messages,pm_noforwards,ai_compose,rich_formatting"),
+                 ',');
   vector<td_api::object_ptr<td_api::PremiumFeature>> features;
   for (const auto &premium_feature : premium_features) {
     auto feature = get_premium_feature_object(premium_feature);

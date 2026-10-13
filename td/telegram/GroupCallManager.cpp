@@ -5967,8 +5967,9 @@ void GroupCallManager::send_group_call_message(GroupCallId group_call_id,
     if (static_cast<int64>(utf8_length(message.text)) > G()->get_option_integer("group_call_message_text_length_max")) {
       return promise.set_error(400, "Message is too long");
     }
-    td::remove_if(message.entities,
-                  [](const MessageEntity &entity) { return entity.type == MessageEntity::Type::FormattedDate; });
+    td::remove_if(message.entities, [](const MessageEntity &entity) {
+      return entity.type == MessageEntity::Type::FormattedDate || entity.type == MessageEntity::Type::TonAddress;
+    });
   }
 
   auto as_dialog_id =
@@ -6344,6 +6345,7 @@ void GroupCallManager::get_group_call_stars(GroupCallId group_call_id,
 
 void GroupCallManager::get_group_call_stars_from_server(
     InputGroupCallId input_group_call_id, Promise<td_api::object_ptr<td_api::liveStoryDonors>> &&promise) {
+  CHECK(input_group_call_id != InputGroupCallId());
   auto &queries = get_stars_queries_[input_group_call_id];
   queries.push_back(std::move(promise));
   if (queries.size() != 1u) {
@@ -6554,13 +6556,21 @@ void GroupCallManager::do_delete_group_call_participants(InputGroupCallId input_
     }
     return promise.set_error(400, "GROUPCALL_JOIN_MISSING");
   }
+  td::remove(user_ids, td_->user_manager_->get_my_id().get());
+  if (user_ids.empty()) {
+    return promise.set_value(Unit());
+  }
   auto state = tde2e_move_as_ok(tde2e_api::call_get_state(group_call->call_id));
   if (!td::remove_if(state.participants,
                      [&user_ids](const auto &participant) { return td::contains(user_ids, participant.user_id); }) &&
       !is_ban) {
     return promise.set_value(Unit());
   }
-  auto block = tde2e_move_as_ok(tde2e_api::call_create_change_state_block(group_call->call_id, state));
+  auto r_block = tde2e_api::call_create_change_state_block(group_call->call_id, state);
+  if (r_block.is_error()) {
+    return promise.set_error(400, "Not enough rights to delete participants");
+  }
+  auto block = std::move(r_block.value());
 
   td_->create_handler<DeleteConferenceCallParticipantsQuery>(std::move(promise))
       ->send(input_group_call_id, std::move(user_ids), is_ban, BufferSlice(block));
@@ -7153,7 +7163,7 @@ void GroupCallManager::leave_group_call(GroupCallId group_call_id, Promise<Unit>
       bool old_is_joined = get_group_call_is_joined(group_call);
       if (cancel_join_group_call_request(input_group_call_id, group_call) != 0) {
         if (try_clear_group_call_participants(input_group_call_id) ||
-            old_is_joined != get_group_call_is_joined(group_call)) {
+            (old_is_joined != get_group_call_is_joined(group_call) && group_call->is_inited)) {
           send_update_group_call(group_call, "leave_group_call 1");
         }
         process_group_call_after_join_requests(input_group_call_id, "leave_group_call 1");

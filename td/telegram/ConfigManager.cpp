@@ -248,7 +248,7 @@ ActorOwn<> get_simple_config_mozilla_dns(Promise<SimpleConfigResult> promise, bo
   return get_simple_config_dns("mozilla.cloudflare-dns.com/dns-query", "mozilla.cloudflare-dns.com", std::move(promise),
                                prefer_ipv6, domain_name, is_test, scheduler_id);
 }
-
+/*
 static string generate_firebase_remote_config_payload() {
   unsigned char buf[17];
   Random::secure_bytes(buf, sizeof(buf));
@@ -283,7 +283,7 @@ ActorOwn<> get_simple_config_firebase_remote_config(Promise<SimpleConfigResult> 
   return get_simple_config_impl(std::move(promise), scheduler_id, std::move(url), "firebaseremoteconfig.googleapis.com",
                                 {}, prefer_ipv6, std::move(get_config), payload, "application/json");
 }
-
+*/
 ActorOwn<> get_simple_config_firebase_realtime(Promise<SimpleConfigResult> promise, bool prefer_ipv6, Slice domain_name,
                                                bool is_test, int32 scheduler_id) {
   if (is_test) {
@@ -753,22 +753,20 @@ class ConfigRecoverer final : public Actor {
         send_closure(self, &ConfigRecoverer::on_simple_config, std::move(r_simple_config), false);
       });
       auto get_simple_config = [&] {
-        switch (simple_config_turn_ % 10) {
-          case 6:
+        switch (simple_config_turn_ % 9) {
+          case 5:
             return get_simple_config_azure;
           case 2:
-            return get_simple_config_firebase_remote_config;
-          case 4:
             return get_simple_config_firebase_firestore;
-          case 9:
+          case 8:
             return get_simple_config_firebase_realtime;
           case 0:
           case 3:
-          case 8:
+          case 7:
             return get_simple_config_google_dns;
           case 1:
-          case 5:
-          case 7:
+          case 4:
+          case 6:
           default:
             return get_simple_config_mozilla_dns;
         }
@@ -1360,19 +1358,24 @@ void ConfigManager::process_app_config(tl_object_ptr<telegram_api::JSONValue> &c
   string whitelisted_bots;
   string ton_stakedice_stake_suggested_amounts;
   string gift_craft_probabilities;
+  int32 wallet_gasless_daily_transfers = 0;
+  vector<string> bot_allowed_suffixes;
 
   // {"stories_all_hidden", "archive_all_stories"}
   static const FlatHashMap<Slice, Slice, SliceHash> bool_keys = {
       {"autoarchive_setting_available", "can_archive_and_mute_new_chats_from_unknown_users"},
       {"can_edit_factcheck", "can_edit_fact_check"},
       {"channel_revenue_withdrawal_enabled", "can_withdraw_chat_revenue"},
+      {"message_primary_edited_date", "show_message_edit_date_by_default"},
       {"premium_gift_attach_menu_icon", "gift_premium_from_attachment_menu"},
       {"premium_gift_text_field_icon", "gift_premium_from_input_field"},
       {"settings_display_passkeys", "can_use_login_passkey"},
       {"stars_gifts_enabled", "can_gift_stars"},
       {"stars_paid_messages_available", "can_enable_paid_messages"},
+      {"stars_spend_topup_invoice_disabled", "star_top_up_disabled"},
       {"story_weather_preload", "can_preload_weather"},
-      {"video_ignore_alt_documents", ""}};
+      {"video_ignore_alt_documents", ""},
+      {"wallet_available", "can_use_ton_wallet"}};
 
   static const FlatHashMap<Slice, Slice, SliceHash> integer_keys = {
       {"aicompose_tone_examples_num", "text_composition_style_example_count"},
@@ -1381,6 +1384,7 @@ void ConfigManager::process_app_config(tl_object_ptr<telegram_api::JSONValue> &c
       {"authorization_autoconfirm_period", ""},
       {"boosts_channel_level_max", "chat_boost_level_max"},
       {"boosts_per_sent_gift", "premium_gift_boost_count"},
+      {"bot_additional_usernames_limit", "secondary_bot_username_count_max"},
       {"bot_preview_medias_max", "bot_media_preview_count_max"},
       {"bot_verification_description_length_limit", "bot_verification_custom_description_length_max"},
       {"business_chat_links_limit", "business_chat_link_count_max"},
@@ -1394,8 +1398,11 @@ void ConfigManager::process_app_config(tl_object_ptr<telegram_api::JSONValue> &c
       {"chat_read_mark_expire_period", ""},
       {"chat_read_mark_size_threshold", ""},
       {"chatlist_update_period", "chat_folder_new_chats_update_period"},
+      {"community_bot_peers_limit", "community_bot_count_max"},
+      {"community_peers_limit", "community_chat_count_max"},
       {"conference_call_size_limit", "group_call_participant_count_max"},
       {"contact_note_length_limit", "user_note_text_length_max"},
+      {"ephemeral_welcome_messages_max", "welcome_message_count_max"},
       {"factcheck_length_limit", "fact_check_length_max"},
       {"giveaway_add_peers_max", "giveaway_additional_chat_count_max"},
       {"giveaway_boosts_per_premium", "giveaway_boost_count_per_premium"},
@@ -1476,8 +1483,8 @@ void ConfigManager::process_app_config(tl_object_ptr<telegram_api::JSONValue> &c
       {"todo_item_length_max", "checklist_task_text_length_max"},
       {"todo_items_max", "checklist_task_count_max"},
       {"todo_title_length_max", "checklist_title_length_max"},
-      {"ton_stargift_resale_commission_permille", "gift_resale_toncoin_earnings_per_mille"},
-      {"ton_suggested_post_commission_permille", "suggested_post_toncoin_earnings_per_mille"},
+      {"ton_stargift_resale_commission_permille", "gift_resale_gram_earnings_per_mille"},
+      {"ton_suggested_post_commission_permille", "suggested_post_gram_earnings_per_mille"},
       {"topics_pinned_limit", "pinned_forum_topic_count_max"},
       {"upload_premium_speedup_download", "premium_download_speedup"},
       {"upload_premium_speedup_notify_period", ""},
@@ -1486,7 +1493,9 @@ void ConfigManager::process_app_config(tl_object_ptr<telegram_api::JSONValue> &c
       {"stories_changelog_user_id", "stories_changelog_user_id"},
       {"telegram_antispam_user_id", "anti_spam_bot_user_id"},
       {"ton_stakedice_stake_amount_max", "stake_dice_stake_amount_max"},
-      {"ton_stakedice_stake_amount_min", "stake_dice_stake_amount_min"}};
+      {"ton_stakedice_stake_amount_min", "stake_dice_stake_amount_min"},
+      {"wallet_gasless_min_nanos", "ton_wallet_gasless_transfer_amount_min"},
+      {"wallet_transfer_min_nanos", "ton_wallet_transfer_amount_min"}};
   static const FlatHashMap<Slice, Slice, SliceHash> string_keys = {
       {"gif_search_branding", "animation_search_provider"},
       {"music_search_username", "audio_search_bot_username"},
@@ -1495,7 +1504,7 @@ void ConfigManager::process_app_config(tl_object_ptr<telegram_api::JSONValue> &c
       {"stories_venue_search_username", "venue_search_bot_username"},
       {"ton_blockchain_explorer_url", ""},
       {"ton_proxy_address", ""},
-      {"ton_topup_url", "toncoin_top_up_url"},
+      {"ton_topup_url", "gram_top_up_url"},
       {"weather_search_username", "weather_bot_username"}};
   static const FlatHashSet<Slice, SliceHash> ignored_options(
       {"channel_color_level_min", "default_emoji_statuses_stickerset_id", "dialog_filters_enabled",
@@ -1911,27 +1920,27 @@ void ConfigManager::process_app_config(tl_object_ptr<telegram_api::JSONValue> &c
         continue;
       }
       if (key == "ton_suggested_post_amount_min") {
-        G()->set_option_integer("suggested_post_toncoin_cent_count_min",
+        G()->set_option_integer("suggested_post_gram_cent_count_min",
                                 get_json_value_long(std::move(key_value->value_), key) / 10000000);
         continue;
       }
       if (key == "ton_suggested_post_amount_max") {
-        G()->set_option_integer("suggested_post_toncoin_cent_count_max",
+        G()->set_option_integer("suggested_post_gram_cent_count_max",
                                 get_json_value_long(std::move(key_value->value_), key) / 10000000);
         continue;
       }
       if (key == "ton_stargift_resale_amount_min") {
-        G()->set_option_integer("gift_resale_toncoin_cent_count_min",
+        G()->set_option_integer("gift_resale_gram_cent_count_min",
                                 get_json_value_long(std::move(key_value->value_), key) / 10000000);
         continue;
       }
       if (key == "ton_stargift_resale_amount_max") {
-        G()->set_option_integer("gift_resale_toncoin_cent_count_max",
+        G()->set_option_integer("gift_resale_gram_cent_count_max",
                                 get_json_value_long(std::move(key_value->value_), key) / 10000000);
         continue;
       }
       if (key == "ton_usd_rate") {
-        G()->set_option_integer("million_toncoin_to_usd_rate",
+        G()->set_option_integer("million_gram_to_usd_rate",
                                 static_cast<int64>(get_json_value_double(std::move(key_value->value_), key) * 1000000));
         continue;
       }
@@ -2034,6 +2043,27 @@ void ConfigManager::process_app_config(tl_object_ptr<telegram_api::JSONValue> &c
         }
         continue;
       }
+      if (key == "wallet_gasless_daily_transfers") {
+        wallet_gasless_daily_transfers = get_json_value_int(std::move(key_value->value_), key);
+        continue;
+      }
+      if (key == "bot_allowed_suffixes") {
+        if (value->get_id() == telegram_api::jsonArray::ID) {
+          auto suffixes = std::move(static_cast<telegram_api::jsonArray *>(value)->value_);
+          for (auto &suffix : suffixes) {
+            auto suffix_text = get_json_value_string(std::move(suffix), key);
+            to_lower_inplace(suffix_text);
+            if (!suffix_text.empty() && suffix_text.find(' ') == string::npos) {
+              bot_allowed_suffixes.push_back(suffix_text);
+            } else {
+              LOG(ERROR) << "Receive an invalid bot suffix";
+            }
+          }
+        } else {
+          LOG(ERROR) << "Receive unexpected bot_allowed_suffixes " << to_string(*value);
+        }
+        continue;
+      }
 
       new_values.push_back(std::move(key_value));
     }
@@ -2102,6 +2132,8 @@ void ConfigManager::process_app_config(tl_object_ptr<telegram_api::JSONValue> &c
     options.set_option_string("starref_start_param_prefixes", implode(starref_start_param_prefixes, ' '));
   }
 
+  options.set_option_string("bot_allowed_suffixes", implode(bot_allowed_suffixes, ' '));
+
   options.set_option_string("emoji_sounds", implode(emoji_sounds, ','));
 
   if (animated_emoji_zoom <= 0 || animated_emoji_zoom > 2.0) {
@@ -2114,6 +2146,7 @@ void ConfigManager::process_app_config(tl_object_ptr<telegram_api::JSONValue> &c
   } else {
     options.set_option_string("animation_search_emojis", animation_search_emojis);
   }
+  options.set_option_integer("ton_wallet_gasless_transfer_daily_count_max", wallet_gasless_daily_transfers);
 
   options.set_option_boolean("can_accept_calls", can_accept_calls);
 

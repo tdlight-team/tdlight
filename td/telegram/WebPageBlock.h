@@ -7,10 +7,13 @@
 #pragma once
 
 #include "td/telegram/CustomEmojiId.h"
+#include "td/telegram/DialogId.h"
 #include "td/telegram/DialogParticipant.h"
 #include "td/telegram/files/FileId.h"
 #include "td/telegram/logevent/LogEvent.h"
+#include "td/telegram/MessageContentDupType.h"
 #include "td/telegram/Photo.h"
+#include "td/telegram/RichMessageMedia.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
 #include "td/telegram/UserId.h"
@@ -18,18 +21,31 @@
 #include "td/utils/common.h"
 #include "td/utils/FlatHashMap.h"
 #include "td/utils/Slice.h"
+#include "td/utils/Status.h"
 
 #include <functional>
 
 namespace td {
 
 class Dependencies;
-
 struct GetWebPageBlockObjectContext;
-
 class RichText;
-
 class Td;
+
+struct GetInputPageBlockContext {
+  const Td *td_ = nullptr;
+  vector<telegram_api::object_ptr<telegram_api::InputPhoto>> photos_;
+  vector<telegram_api::object_ptr<telegram_api::InputDocument>> documents_;
+  const vector<RichMessageMedia> *media_ = nullptr;
+  size_t media_pos_ = 0;
+};
+
+struct CloneWebPageBlockContext {
+  Td *td_ = nullptr;
+  DialogId dialog_id_;
+  MessageContentDupType dup_type_ = MessageContentDupType::Send;
+  bool is_via_bot_ = false;
+};
 
 class WebPageBlock {
  protected:
@@ -67,6 +83,10 @@ class WebPageBlock {
     Math,
     Thinking,
     BlockQuoteBlocks,
+    Document,
+    ButtonRow,
+    ExpandableBlockQuote,
+    Unsupported,
     Size
   };
 
@@ -91,6 +111,10 @@ class WebPageBlock {
 
   using Context = GetWebPageBlockObjectContext;
 
+  using InputContext = GetInputPageBlockContext;
+
+  using CloneContext = CloneWebPageBlockContext;
+
  public:
   WebPageBlock() = default;
   WebPageBlock(const WebPageBlock &) = delete;
@@ -101,10 +125,13 @@ class WebPageBlock {
 
   virtual void append_file_ids(const Td *td, vector<FileId> &file_ids) const = 0;
 
+  virtual void append_rich_message_media(vector<RichMessageMedia> &media) const {
+  }
+
   virtual void add_dependencies(Dependencies &dependencies) const = 0;
 
   virtual void for_each_rich_text(bool recurse_text,
-                                  const std::function<void(const RichText *text)> &callback) const = 0;
+                                  const std::function<void(const RichText &text)> &callback) const = 0;
 
   void for_each_text(const std::function<void(Slice text)> &callback) const;
 
@@ -120,13 +147,15 @@ class WebPageBlock {
     return true;
   }
 
+  virtual bool need_reget() const {
+    return false;
+  }
+
   virtual int32 get_index_mask() const = 0;
 
-  virtual unique_ptr<WebPageBlock> clone() const = 0;
+  virtual unique_ptr<WebPageBlock> clone(CloneContext &context) const = 0;
 
-  virtual telegram_api::object_ptr<telegram_api::PageBlock> get_input_page_block(
-      const Td *td, vector<telegram_api::object_ptr<telegram_api::InputPhoto>> &photos,
-      vector<telegram_api::object_ptr<telegram_api::InputDocument>> &documents) const = 0;
+  virtual telegram_api::object_ptr<telegram_api::PageBlock> get_input_page_block(InputContext &context) const = 0;
 
   virtual td_api::object_ptr<td_api::PageBlock> get_page_block_object(Context *context) const = 0;
 
@@ -151,14 +180,18 @@ vector<unique_ptr<WebPageBlock>> get_web_page_blocks(
     const FlatHashMap<int64, FileId> &documents, const FlatHashMap<int64, unique_ptr<Photo>> &photos,
     const FlatHashMap<int64, FileId> &videos, const FlatHashMap<int64, FileId> &voice_notes);
 
+Result<vector<unique_ptr<WebPageBlock>>> get_web_page_blocks(
+    Td *td, DialogId dialog_id, vector<td_api::object_ptr<td_api::InputPageBlock>> input_page_blocks);
+
 int32 get_web_page_blocks_index_mask(const vector<unique_ptr<WebPageBlock>> &page_blocks);
 
-vector<unique_ptr<WebPageBlock>> clone_web_page_blocks(const vector<unique_ptr<WebPageBlock>> &page_blocks);
+vector<unique_ptr<WebPageBlock>> clone_web_page_blocks(const vector<unique_ptr<WebPageBlock>> &page_blocks,
+                                                       CloneWebPageBlockContext &context);
 
 vector<telegram_api::object_ptr<telegram_api::PageBlock>> get_input_page_blocks(
-    const vector<unique_ptr<WebPageBlock>> &page_blocks, const Td *td,
-    vector<telegram_api::object_ptr<telegram_api::InputPhoto>> &photos,
-    vector<telegram_api::object_ptr<telegram_api::InputDocument>> &documents);
+    const vector<unique_ptr<WebPageBlock>> &page_blocks, GetInputPageBlockContext &context);
+
+vector<RichMessageMedia> get_page_blocks_rich_message_media(const vector<unique_ptr<WebPageBlock>> &page_blocks);
 
 vector<td_api::object_ptr<td_api::PageBlock>> get_page_blocks_object(
     const vector<unique_ptr<WebPageBlock>> &page_blocks, Td *td, Slice base_url, Slice real_url,

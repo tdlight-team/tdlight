@@ -6,176 +6,25 @@
 //
 #include "td/telegram/DraftMessage.h"
 
-#include "td/telegram/AccessRights.h"
 #include "td/telegram/Dependencies.h"
-#include "td/telegram/DialogManager.h"
 #include "td/telegram/Global.h"
+#include "td/telegram/MessageContent.h"
+#include "td/telegram/MessageContentDupType.h"
+#include "td/telegram/MessageCopyOptions.h"
 #include "td/telegram/MessageEntity.h"
+#include "td/telegram/MessageId.h"
 #include "td/telegram/MessageSelfDestructType.h"
 #include "td/telegram/MessagesManager.h"
+#include "td/telegram/RichMessage.h"
 #include "td/telegram/SuggestedPost.h"
 #include "td/telegram/Td.h"
 #include "td/telegram/telegram_api.h"
-#include "td/telegram/UpdatesManager.h"
+#include "td/telegram/UserId.h"
 
-#include "td/utils/buffer.h"
 #include "td/utils/logging.h"
 #include "td/utils/tl_helpers.h"
 
 namespace td {
-
-class SaveDraftMessageQuery final : public Td::ResultHandler {
-  Promise<Unit> promise_;
-  DialogId dialog_id_;
-
- public:
-  explicit SaveDraftMessageQuery(Promise<Unit> &&promise) : promise_(std::move(promise)) {
-  }
-
-  void send(DialogId dialog_id, const MessageTopic &message_topic, const unique_ptr<DraftMessage> &draft_message) {
-    dialog_id_ = dialog_id;
-
-    auto input_peer = td_->dialog_manager_->get_input_peer(dialog_id, AccessRights::Write);
-    if (input_peer == nullptr) {
-      LOG(INFO) << "Can't update draft message because have no write access to " << dialog_id;
-      return on_error(Status::Error(400, "PEER_ID_INVALID"));
-    }
-
-    int32 flags = 0;
-    telegram_api::object_ptr<telegram_api::InputReplyTo> input_reply_to;
-    telegram_api::object_ptr<telegram_api::InputRichMessage> input_rich_message;
-    vector<telegram_api::object_ptr<telegram_api::MessageEntity>> input_message_entities;
-    telegram_api::object_ptr<telegram_api::InputMedia> media;
-    int64 message_effect_id = 0;
-    telegram_api::object_ptr<telegram_api::suggestedPost> suggested_post;
-    bool disable_web_page_preview = false;
-    bool invert_media = false;
-    if (draft_message != nullptr) {
-      CHECK(!draft_message->is_local());
-      input_reply_to = draft_message->message_input_reply_to_.get_input_reply_to(td_, message_topic, true);
-      if (draft_message->is_rich_) {
-        input_rich_message = draft_message->rich_message_.get_input_rich_message(td_);
-        flags |= telegram_api::messages_saveDraft::RICH_MESSAGE_MASK;
-      } else {
-        if (draft_message->input_message_text_.disable_web_page_preview) {
-          disable_web_page_preview = true;
-        } else if (draft_message->input_message_text_.show_above_text) {
-          invert_media = true;
-        }
-        input_message_entities = get_input_message_entities(
-            td_->user_manager_.get(), draft_message->input_message_text_.text.entities, "SaveDraftMessageQuery");
-        if (!input_message_entities.empty()) {
-          flags |= telegram_api::messages_saveDraft::ENTITIES_MASK;
-        }
-        media = draft_message->input_message_text_.get_input_media_web_page();
-        if (media != nullptr) {
-          flags |= telegram_api::messages_saveDraft::MEDIA_MASK;
-        }
-      }
-      if (draft_message->message_effect_id_.is_valid()) {
-        flags |= telegram_api::messages_saveDraft::EFFECT_MASK;
-        message_effect_id = draft_message->message_effect_id_.get();
-      }
-      if (draft_message->suggested_post_ != nullptr) {
-        flags |= telegram_api::messages_saveDraft::SUGGESTED_POST_MASK;
-        suggested_post = draft_message->suggested_post_->get_input_suggested_post();
-      }
-    } else {
-      input_reply_to = MessageInputReplyTo().get_input_reply_to(td_, message_topic, true);
-    }
-    if (input_reply_to != nullptr) {
-      flags |= telegram_api::messages_saveDraft::REPLY_TO_MASK;
-    }
-    send_query(G()->net_query_creator().create(
-        telegram_api::messages_saveDraft(
-            flags, disable_web_page_preview, invert_media, std::move(input_reply_to), std::move(input_peer),
-            draft_message == nullptr ? string() : draft_message->input_message_text_.text.text,
-            std::move(input_message_entities), std::move(media), message_effect_id, std::move(suggested_post),
-            std::move(input_rich_message)),
-        {{dialog_id}}));
-  }
-
-  void on_result(BufferSlice packet) final {
-    auto result_ptr = fetch_result<telegram_api::messages_saveDraft>(packet);
-    if (result_ptr.is_error()) {
-      return on_error(result_ptr.move_as_error());
-    }
-
-    bool result = result_ptr.ok();
-    if (!result) {
-      return on_error(Status::Error(400, "Save draft failed"));
-    }
-
-    promise_.set_value(Unit());
-  }
-
-  void on_error(Status status) final {
-    if (status.message() == "TOPIC_CLOSED") {
-      // when the draft is a reply to a message in a closed topic, server will not allow to save it
-      // with the error "TOPIC_CLOSED", but the draft will be kept locally
-      return promise_.set_value(Unit());
-    }
-    if (!td_->dialog_manager_->on_get_dialog_error(dialog_id_, status, "SaveDraftMessageQuery") &&
-        status.message() != "PEER_ID_INVALID") {
-      LOG(ERROR) << "Receive error for SaveDraftMessageQuery: " << status;
-    }
-    promise_.set_error(std::move(status));
-  }
-};
-
-class GetAllDraftsQuery final : public Td::ResultHandler {
- public:
-  void send() {
-    send_query(G()->net_query_creator().create(telegram_api::messages_getAllDrafts()));
-  }
-
-  void on_result(BufferSlice packet) final {
-    auto result_ptr = fetch_result<telegram_api::messages_getAllDrafts>(packet);
-    if (result_ptr.is_error()) {
-      return on_error(result_ptr.move_as_error());
-    }
-
-    auto ptr = result_ptr.move_as_ok();
-    LOG(INFO) << "Receive result for GetAllDraftsQuery: " << to_string(ptr);
-    td_->updates_manager_->on_get_updates(std::move(ptr), Promise<Unit>());
-  }
-
-  void on_error(Status status) final {
-    if (!G()->is_expected_error(status)) {
-      LOG(ERROR) << "Receive error for GetAllDraftsQuery: " << status;
-    }
-    status.ignore();
-  }
-};
-
-class ClearAllDraftsQuery final : public Td::ResultHandler {
-  Promise<Unit> promise_;
-
- public:
-  explicit ClearAllDraftsQuery(Promise<Unit> &&promise) : promise_(std::move(promise)) {
-  }
-
-  void send() {
-    send_query(G()->net_query_creator().create(telegram_api::messages_clearAllDrafts()));
-  }
-
-  void on_result(BufferSlice packet) final {
-    auto result_ptr = fetch_result<telegram_api::messages_clearAllDrafts>(packet);
-    if (result_ptr.is_error()) {
-      return on_error(result_ptr.move_as_error());
-    }
-
-    LOG(INFO) << "Receive result for ClearAllDraftsQuery: " << result_ptr.ok();
-    promise_.set_value(Unit());
-  }
-
-  void on_error(Status status) final {
-    if (!G()->is_expected_error(status)) {
-      LOG(ERROR) << "Receive error for ClearAllDraftsQuery: " << status;
-    }
-    promise_.set_error(std::move(status));
-  }
-};
 
 class DraftMessageContentVideoNote final : public DraftMessageContent {
  public:
@@ -403,15 +252,16 @@ bool DraftMessage::need_update_to(const DraftMessage &other, bool from_update) c
     return !from_update || other.is_local();
   }
   if (message_input_reply_to_ == other.message_input_reply_to_ && input_message_text_ == other.input_message_text_ &&
-      rich_message_ == other.rich_message_ && message_effect_id_ == other.message_effect_id_ &&
-      suggested_post_ == other.suggested_post_) {
+      are_message_contents_same(nullptr /*unused*/, rich_message_content_.get(), other.rich_message_content_.get()) &&
+      message_effect_id_ == other.message_effect_id_ && suggested_post_ == other.suggested_post_) {
     return date_ < other.date_;
   } else {
     return !from_update || date_ <= other.date_;
   }
 }
 
-unique_ptr<DraftMessage> DraftMessage::clone(const unique_ptr<DraftMessage> &draft_message) {
+unique_ptr<DraftMessage> DraftMessage::clone(Td *td, const unique_ptr<DraftMessage> &draft_message,
+                                             DialogId dialog_id) {
   if (draft_message == nullptr) {
     return nullptr;
   }
@@ -419,7 +269,10 @@ unique_ptr<DraftMessage> DraftMessage::clone(const unique_ptr<DraftMessage> &dra
   result->date_ = draft_message->date_;
   result->message_input_reply_to_ = draft_message->message_input_reply_to_.clone();
   result->input_message_text_ = draft_message->input_message_text_;
-  result->rich_message_ = draft_message->rich_message_.clone();
+  if (draft_message->rich_message_content_ != nullptr) {
+    result->rich_message_content_ = dup_message_content(td, dialog_id, draft_message->rich_message_content_.get(),
+                                                        MessageContentDupType::Send, false, MessageCopyOptions());
+  }
   if (draft_message->local_content_ != nullptr) {
     switch (draft_message->local_content_->get_type()) {
       case DraftMessageContentType::VideoNote: {
@@ -443,19 +296,33 @@ unique_ptr<DraftMessage> DraftMessage::clone(const unique_ptr<DraftMessage> &dra
   return result;
 }
 
+vector<FileId> DraftMessage::get_file_ids(const Td *td) const {
+  if (rich_message_content_ != nullptr) {
+    return get_message_content_file_ids(rich_message_content_.get(), td);
+  }
+  return {};
+}
+
 void DraftMessage::add_dependencies(Dependencies &dependencies) const {
   message_input_reply_to_.add_dependencies(dependencies);
   input_message_text_.add_dependencies(dependencies);
-  rich_message_.add_dependencies(dependencies);
+  if (rich_message_content_ != nullptr) {
+    add_message_content_dependencies(dependencies, rich_message_content_.get(), UserId() /*ignored*/,
+                                     false /*ignored*/);
+  }
 }
 
 td_api::object_ptr<td_api::draftMessage> DraftMessage::get_draft_message_object(Td *td) const {
   td_api::object_ptr<td_api::DraftMessageContent> content;
   if (local_content_ != nullptr) {
     content = local_content_->get_draft_message_content_object();
-  } else if (is_rich_) {
-    content =
-        td_api::make_object<td_api::draftMessageContentRichMessage>(rich_message_.get_rich_message_object(td, true));
+  } else if (rich_message_content_ != nullptr) {
+    auto message_content_object =
+        get_message_content_object(rich_message_content_.get(), td, DialogId(), MessageId(), DialogId(), false, true,
+                                   false, DialogId(), 0, 0, false, true, -1, false, false, "get_draft_message_object");
+    CHECK(message_content_object->get_id() == td_api::messageRichMessage::ID);
+    auto rich_message = td_api::move_object_as<td_api::messageRichMessage>(message_content_object);
+    content = td_api::make_object<td_api::draftMessageContentRichMessage>(std::move(rich_message->message_));
   } else {
     content = input_message_text_.get_draft_message_content_object(td->user_manager_.get());
   }
@@ -470,8 +337,8 @@ DraftMessage::DraftMessage(Td *td, telegram_api::object_ptr<telegram_api::draftM
   date_ = draft_message->date_;
   message_input_reply_to_ = MessageInputReplyTo(td, std::move(draft_message->reply_to_));
   if (draft_message->rich_message_ != nullptr) {
-    is_rich_ = true;
-    rich_message_ = RichMessage(td, std::move(draft_message->rich_message_), DialogId());
+    rich_message_content_ =
+        create_rich_message_content(RichMessage(td, std::move(draft_message->rich_message_), DialogId()));
   } else {
     auto draft_text = get_formatted_text(td->user_manager_.get(), std::move(draft_message->message_),
                                          std::move(draft_message->entities_), true, true, "DraftMessage");
@@ -525,14 +392,12 @@ Result<unique_ptr<DraftMessage>> DraftMessage::get_draft_message(
         result->input_message_text_ = std::move(input_message_text);
         break;
       }
-      case td_api::draftMessageContentRichMessage::ID: {
-        auto message = td_api::move_object_as<td_api::draftMessageContentRichMessage>(content);
-        if (message->message_ == nullptr || true) {
-          break;
-        }
+      case td_api::draftMessageContentRichMessage::ID:
+        return Status::Error(400, "Use draftMessageContentInputRichMessage instead of draftMessageContentRichMessage");
+      case td_api::draftMessageContentInputRichMessage::ID: {
+        auto message = td_api::move_object_as<td_api::draftMessageContentInputRichMessage>(content);
         TRY_RESULT(rich_message, RichMessage::get_rich_message(td, dialog_id, std::move(message->message_), false));
-        result->rich_message_ = std::move(rich_message);
-        result->is_rich_ = true;
+        result->rich_message_content_ = create_rich_message_content(std::move(rich_message));
         break;
       }
       case td_api::draftMessageContentVideoNote::ID: {
@@ -557,8 +422,8 @@ Result<unique_ptr<DraftMessage>> DraftMessage::get_draft_message(
     }
   }
 
-  if (!result->message_input_reply_to_.is_valid() && result->input_message_text_.is_empty() && !result->is_rich_ &&
-      result->local_content_ == nullptr) {
+  if (!result->message_input_reply_to_.is_valid() && result->input_message_text_.is_empty() &&
+      result->rich_message_content_ == nullptr && result->local_content_ == nullptr) {
     return nullptr;
   }
 
@@ -582,6 +447,13 @@ bool need_update_draft_message(const unique_ptr<DraftMessage> &old_draft_message
     return true;
   }
   return old_draft_message->need_update_to(*new_draft_message, from_update);
+}
+
+vector<FileId> get_draft_message_file_ids(const Td *td, const unique_ptr<DraftMessage> &draft_message) {
+  if (draft_message == nullptr) {
+    return {};
+  }
+  return draft_message->get_file_ids(td);
 }
 
 void add_draft_message_dependencies(Dependencies &dependencies, const unique_ptr<DraftMessage> &draft_message) {
@@ -616,22 +488,6 @@ unique_ptr<DraftMessage> get_draft_message(Td *td,
   }
 }
 
-void save_draft_message(Td *td, DialogId dialog_id, const MessageTopic &message_topic,
-                        const unique_ptr<DraftMessage> &draft_message, Promise<Unit> &&promise) {
-  if (dialog_id.get_type() == DialogType::SecretChat || is_local_draft_message(draft_message)) {
-    return promise.set_value(Unit());
-  }
-  td->create_handler<SaveDraftMessageQuery>(std::move(promise))->send(dialog_id, message_topic, draft_message);
-}
-
-void load_all_draft_messages(Td *td) {
-  td->create_handler<GetAllDraftsQuery>()->send();
-}
-
-void clear_all_draft_messages(Td *td, Promise<Unit> &&promise) {
-  td->create_handler<ClearAllDraftsQuery>(std::move(promise))->send();
-}
-
 vector<InputDialogId> get_draft_message_reply_input_dialog_ids(
     const telegram_api::object_ptr<telegram_api::DraftMessage> &draft_message) {
   if (draft_message == nullptr || draft_message->get_id() != telegram_api::draftMessage::ID) {
@@ -661,6 +517,8 @@ vector<InputDialogId> get_draft_message_reply_input_dialog_ids(
       auto reply_to = static_cast<const telegram_api::inputReplyToMonoForum *>(input_reply_to);
       return {InputDialogId(reply_to->monoforum_peer_id_)};
     }
+    case telegram_api::inputReplyToEphemeralMessage::ID:
+      return {};
     default:
       UNREACHABLE();
   }

@@ -329,6 +329,7 @@ function split_file($file, $chunks, $undo) {
             'ChatId' => 'ChatId',
             'chat_manager[_(-](?![.]get[(][)])|ChatManager([^ ;.]| [^*])' => 'ChatManager',
             'common_dialog_manager[_(-](?![.]get[(][)])|CommonDialogManager' => 'CommonDialogManager',
+            'community_manager[_(-](?![.]get[(][)])|CommunityManager([^ ;.]| [^*])' => 'CommunityManager',
             'connection_state_manager[_(-](?![.]get[(][)])|ConnectionStateManager' => 'ConnectionStateManager',
             'country_info_manager[_(-](?![.]get[(][)])|CountryInfoManager' => 'CountryInfoManager',
             'CurrencyAmount' => 'CurrencyAmount',
@@ -352,6 +353,7 @@ function split_file($file, $chunks, $undo) {
             'documents_manager[_(-](?![.]get[(][)])|DocumentsManager' => 'DocumentsManager',
             'download_manager[_(-](?![.]get[(][)])|DownloadManager[^C]' => 'DownloadManager',
             'DownloadManagerCallback' => 'DownloadManagerCallback',
+            'draft_message_manager[_(-](?![.]get[(][)])|DraftMessageManager' => 'DraftMessageManager',
             'EmailVerification' => 'EmailVerification',
             'EmojiGroup' => 'EmojiGroup',
             'FactCheck' => 'FactCheck',
@@ -371,6 +373,7 @@ function split_file($file, $chunks, $undo) {
             'GroupCallMessage[^A-Z]' => 'GroupCallMessage',
             'GroupCallMessageLimit' => 'GroupCallMessageLimit',
             'hashtag_hints[_(-](?![.]get[(][)])|HashtagHints' => 'HashtagHints',
+            'InlineMessageContent' => 'InlineMessageContent',
             'inline_message_manager[_(-](?![.]get[(][)])|InlineMessageManager' => 'InlineMessageManager',
             'inline_queries_manager[_(-](?![.]get[(][)])|InlineQueriesManager' => 'InlineQueriesManager',
             'InputBusinessChatLink' => 'InputBusinessChatLink',
@@ -379,6 +382,7 @@ function split_file($file, $chunks, $undo) {
             'language_pack_manager[_(-]|LanguagePackManager' => 'LanguagePackManager',
             'link_manager[_(-](?![.]get[(][)])|LinkManager' => 'LinkManager',
             'LogeventIdWithGeneration|add_log_event|delete_log_event|get_erase_log_event_promise|parse_time|store_time' => 'logevent/LogEventHelper',
+            'MessageContentUploadId' => 'MessageContentUploadId',
             'MessageCopyOptions' => 'MessageCopyOptions',
             'MessageCover' => 'MessageCover',
             'MessageEffectId' => 'MessageEffectId',
@@ -427,7 +431,9 @@ function split_file($file, $chunks, $undo) {
             'referral_program_manager[_(-](?![.]get[(][)])|ReferralProgramManager' => 'ReferralProgramManager',
             'ReferralProgramParameters' => 'ReferralProgramParameters',
             'RequestActor|RequestOnceActor' => 'RequestActor',
-            'RichMessage' => 'RichMessage',
+            'RichButtonStyle' => 'RuchButtonStyle',
+            'RichMessage[^M]' => 'RichMessage',
+            'RichMessageMedia' => 'RichMessageMedia',
             'saved_messages_manager[_(-](?![.]get[(][)])|SavedMessagesManager' => 'SavedMessagesManager',
             'ScopeNotificationSettings|[a-z_]*_scope_notification_settings' => 'ScopeNotificationSettings',
             'SearchPostsFlood' => 'SearchPostsFlood',
@@ -484,6 +490,7 @@ function split_file($file, $chunks, $undo) {
             'ToDoItem' => 'ToDoItem',
             'ToDoList' => 'ToDoList',
             'TonAmount' => 'TonAmount',
+            'ton_wallet_manager[_(-](?![.]get[(][)])|TonWalletManager' => 'TonWalletManager',
             'TopDialogCategory|get_top_dialog_category' => 'TopDialogCategory',
             'top_dialog_manager[_(-](?![.]get[(][)])|TopDialogManager' => 'TopDialogManager',
             'translation_manager[_(-](?![.]get[(][)])|TranslationManager' => 'TranslationManager',
@@ -501,7 +508,8 @@ function split_file($file, $chunks, $undo) {
             'WebBrowserSettings' => 'WebBrowserSettings',
             'WebDomainException' => 'WebDomainException',
             'WebPageId(Hash)?' => 'WebPageId',
-            'web_pages_manager[_(-](?![.]get[(][)])|WebPagesManager' => 'WebPagesManager');
+            'web_pages_manager[_(-](?![.]get[(][)])|WebPagesManager' => 'WebPagesManager',
+            'welcome_message_manager[_(-](?![.]get[(][)])|WelcomeMessageManager' => 'WelcomeMessageManager');
 
         foreach ($td_methods as $pattern => $header) {
             if (strpos($cpp_name, $header) !== false) {

@@ -16,6 +16,7 @@
 #include "td/telegram/files/FileLocation.hpp"
 #include "td/telegram/MemoryManager.h"
 #include "td/telegram/Global.h"
+#include "td/telegram/InputMedia.h"
 #include "td/telegram/logevent/LogEvent.h"
 #include "td/telegram/misc.h"
 #include "td/telegram/SecureStorage.h"
@@ -1597,7 +1598,7 @@ bool FileManager::try_fix_partial_local_location(FileNodePtr node) {
   auto partial = node->local_.partial();
   if (!partial.iv_.empty()) {
     // can't recalc iv_
-    LOG(INFO) << "   failed - partial location has nonempty iv";
+    LOG(INFO) << "   failed - partial location has non-empty IV";
     return false;
   }
   if (partial.part_size_ >= 512 * (1 << 10) || (partial.part_size_ & (partial.part_size_ - 1)) != 0) {
@@ -2302,6 +2303,7 @@ Status FileManager::merge(FileId x_file_id, FileId y_file_id, bool no_sync) {
   auto file_view = FileView(node);
 
   LOG(DEBUG) << "Have x_node->pmc_id_ = " << x_node->pmc_id_.get() << ", y_node->pmc_id_ = " << y_node->pmc_id_.get()
+             << ", x_size = " << x_node->size_ << ", y_size = " << y_node->size_
              << ", x_node_size = " << x_node->file_ids_.size() << ", y_node_size = " << y_node->file_ids_.size()
              << ", node_i = " << node_i << ", local_i = " << local_i << ", remote_i = " << remote_i
              << ", generate_i = " << generate_i << ", size_i = " << size_i << ", remote_name_i = " << remote_name_i
@@ -3607,6 +3609,22 @@ bool FileManager::delete_partial_remote_location(FileUploadId file_upload_id) {
   return true;
 }
 
+void FileManager::delete_partial_remote_location_if_needed(FileUploadId file_upload_id, bool was_uploaded) {
+  if (was_uploaded) {
+    CHECK(file_upload_id.is_valid());
+    delete_partial_remote_location(file_upload_id);
+  }
+}
+
+void FileManager::delete_partial_remote_location_if_needed(const vector<FileUploadId> &file_upload_ids,
+                                                           bool was_uploaded) {
+  if (was_uploaded) {
+    CHECK(file_upload_ids.size() == 1u);
+    CHECK(file_upload_ids[0].is_valid());
+    delete_partial_remote_location(file_upload_ids[0]);
+  }
+}
+
 void FileManager::delete_partial_remote_location_if_needed(FileUploadId file_upload_id, const Status &error) {
   if (error.code() != 429 && error.code() < 500 && !G()->close_flag()) {
     delete_partial_remote_location(file_upload_id);
@@ -3965,6 +3983,12 @@ void FileManager::cancel_upload(FileUploadId file_upload_id) {
   try_flush_node(node, "cancel_upload");
 }
 
+void FileManager::cancel_uploads(const vector<FileUploadId> &file_upload_ids) {
+  for (const auto &file_upload_id : file_upload_ids) {
+    cancel_upload(file_upload_id);
+  }
+}
+
 static bool is_background_type(FileType type) {
   return type == FileType::Wallpaper || type == FileType::Background;
 }
@@ -4188,7 +4212,7 @@ Result<FileId> FileManager::get_input_thumbnail_file_id(const tl_object_ptr<td_a
 
 Result<FileId> FileManager::get_input_file_id(FileType type, const tl_object_ptr<td_api::InputFile> &file,
                                               DialogId owner_dialog_id, bool allow_zero, bool is_encrypted,
-                                              bool get_by_hash, bool is_secure, bool force_reuse) {
+                                              bool get_by_hash, bool is_secure, bool force_reuse, bool never_reuse) {
   if (file == nullptr) {
     if (allow_zero) {
       return FileId();
@@ -4211,7 +4235,7 @@ Result<FileId> FileManager::get_input_file_id(FileType type, const tl_object_ptr
         }
         string hash;
         if (G()->get_option_boolean("reuse_uploaded_photos_by_hash") &&
-            get_main_file_type(new_type) == FileType::Photo) {
+            get_main_file_type(new_type) == FileType::Photo && !never_reuse) {
           auto r_stat = stat(path);
           if (r_stat.is_ok() && r_stat.ok().size_ > 0 && r_stat.ok().size_ < 11000000) {
             auto r_file_content = read_file_str(path, r_stat.ok().size_);
@@ -4251,13 +4275,22 @@ Result<FileId> FileManager::get_input_file_id(FileType type, const tl_object_ptr
       }
       case td_api::inputFileId::ID: {
         FileId file_id(static_cast<const td_api::inputFileId *>(file.get())->id_, 0);
+        if (never_reuse) {
+          return Status::Error(400, "Can't use inputFileId");
+        }
         if (!file_id.is_valid()) {
+          if (!allow_zero) {
+            return Status::Error(400, "InputFile is not specified");
+          }
           return FileId();
         }
         return file_id;
       }
       case td_api::inputFileRemote::ID: {
         const string &file_persistent_id = static_cast<const td_api::inputFileRemote *>(file.get())->id_;
+        if (never_reuse) {
+          return Status::Error(400, "Can't use inputFileRemote");
+        }
         if (allow_zero && file_persistent_id.empty()) {
           return FileId();
         }
@@ -4381,6 +4414,54 @@ vector<tl_object_ptr<telegram_api::InputDocument>> FileManager::get_input_docume
     result.push_back(full_remote_location->as_input_document());
   }
   return result;
+}
+
+bool FileManager::extract_was_uploaded(const InputMedia &input_media) {
+  if (input_media.rich_message_ != nullptr) {
+    return extract_was_uploaded(input_media.rich_message_);
+  } else {
+    return extract_was_uploaded(input_media.media_);
+  }
+}
+
+bool FileManager::extract_was_thumbnail_uploaded(const InputMedia &input_media) {
+  if (input_media.rich_message_ != nullptr) {
+    return extract_was_thumbnail_uploaded(input_media.rich_message_);
+  } else {
+    return extract_was_thumbnail_uploaded(input_media.media_);
+  }
+}
+
+string FileManager::extract_file_reference(const InputMedia &input_media) {
+  if (input_media.rich_message_ != nullptr) {
+    return extract_file_reference(input_media.rich_message_);
+  } else {
+    return extract_file_reference(input_media.media_);
+  }
+}
+
+vector<string> FileManager::extract_file_references(const InputMedia &input_media) {
+  if (input_media.rich_message_ != nullptr) {
+    return extract_file_references(input_media.rich_message_);
+  } else {
+    return extract_file_references(input_media.media_);
+  }
+}
+
+string FileManager::extract_cover_file_reference(const InputMedia &input_media) {
+  if (input_media.rich_message_ != nullptr) {
+    return extract_cover_file_reference(input_media.rich_message_);
+  } else {
+    return extract_cover_file_reference(input_media.media_);
+  }
+}
+
+vector<string> FileManager::extract_cover_file_references(const InputMedia &input_media) {
+  if (input_media.rich_message_ != nullptr) {
+    return extract_cover_file_references(input_media.rich_message_);
+  } else {
+    return extract_cover_file_references(input_media.media_);
+  }
 }
 
 vector<const telegram_api::InputMedia *> FileManager::get_poll_media(const telegram_api::InputMedia *input_media) {
@@ -4595,6 +4676,83 @@ string FileManager::extract_file_reference(
   }
 
   return extract_file_reference(static_cast<const telegram_api::inputChatPhoto *>(input_chat_photo.get())->id_);
+}
+
+bool FileManager::extract_was_uploaded(
+    const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message) {
+  return false;
+}
+
+bool FileManager::extract_was_thumbnail_uploaded(
+    const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message) {
+  return false;
+}
+
+string FileManager::extract_file_reference(
+    const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message) {
+  UNREACHABLE();
+}
+
+vector<string> FileManager::extract_file_references(
+    const vector<telegram_api::object_ptr<telegram_api::InputRichFile>> &input_rich_files) {
+  vector<string> result;
+  for (const auto &file : input_rich_files) {
+    CHECK(file != nullptr);
+    switch (file->get_id()) {
+      case telegram_api::inputRichFilePhoto::ID:
+        result.push_back(
+            extract_file_reference(static_cast<const telegram_api::inputRichFilePhoto *>(file.get())->photo_));
+        break;
+      case telegram_api::inputRichFileDocument::ID:
+        result.push_back(
+            extract_file_reference(static_cast<const telegram_api::inputRichFileDocument *>(file.get())->document_));
+        break;
+      default:
+        UNREACHABLE();
+    }
+  }
+  return result;
+}
+
+vector<string> FileManager::extract_file_references(
+    const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message) {
+  if (input_rich_message == nullptr) {
+    return {};
+  }
+  switch (input_rich_message->get_id()) {
+    case telegram_api::inputRichMessage::ID: {
+      auto *message = static_cast<const telegram_api::inputRichMessage *>(input_rich_message.get());
+      vector<string> result;
+      for (const auto &photo : message->photos_) {
+        result.push_back(extract_file_reference(photo));
+      }
+      for (const auto &document : message->documents_) {
+        result.push_back(extract_file_reference(document));
+      }
+      return result;
+    }
+    case telegram_api::inputRichMessageHTML::ID: {
+      return extract_file_references(
+          static_cast<const telegram_api::inputRichMessageHTML *>(input_rich_message.get())->files_);
+    }
+    case telegram_api::inputRichMessageMarkdown::ID: {
+      return extract_file_references(
+          static_cast<const telegram_api::inputRichMessageMarkdown *>(input_rich_message.get())->files_);
+    }
+    default:
+      UNREACHABLE();
+      return {};
+  }
+}
+
+string FileManager::extract_cover_file_reference(
+    const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message) {
+  UNREACHABLE();
+}
+
+vector<string> FileManager::extract_cover_file_references(
+    const telegram_api::object_ptr<telegram_api::InputRichMessage> &input_rich_message) {
+  return {};
 }
 
 FileId FileManager::next_file_id() {

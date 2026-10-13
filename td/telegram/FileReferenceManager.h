@@ -9,10 +9,13 @@
 #include "td/telegram/BackgroundId.h"
 #include "td/telegram/ChannelId.h"
 #include "td/telegram/ChatId.h"
+#include "td/telegram/CommunityId.h"
 #include "td/telegram/DialogId.h"
 #include "td/telegram/files/FileId.h"
 #include "td/telegram/files/FileSourceId.h"
+#include "td/telegram/files/FileUploadId.h"
 #include "td/telegram/MessageFullId.h"
+#include "td/telegram/MessageTopic.h"
 #include "td/telegram/PhotoSizeSource.h"
 #include "td/telegram/QuickReplyMessageFullId.h"
 #include "td/telegram/SetWithPosition.h"
@@ -32,6 +35,8 @@
 #include "td/utils/WaitFreeHashMap.h"
 #include "td/utils/WaitFreeVector.h"
 
+#include <functional>
+
 namespace td {
 
 class Td;
@@ -40,7 +45,7 @@ extern int VERBOSITY_NAME(file_references);
 
 class FileReferenceManager final : public Actor {
  public:
-  explicit FileReferenceManager(ActorShared<> parent);
+  FileReferenceManager(Td *td, ActorShared<> parent);
   FileReferenceManager(const FileReferenceManager &) = delete;
   FileReferenceManager &operator=(const FileReferenceManager &) = delete;
   FileReferenceManager(FileReferenceManager &&) = delete;
@@ -53,7 +58,17 @@ class FileReferenceManager final : public Actor {
     size_t pos_;
     bool is_cover_;
   };
-  static FileReferenceErrorSource get_file_reference_error_source(const Status &error);
+  static FileReferenceErrorSource get_file_reference_error_source(const Status &error, bool expect_index);
+
+  bool process_file_reference_error(const Status &status, bool was_uploaded,
+                                    const vector<FileUploadId> &file_upload_ids, const vector<string> &file_references,
+                                    const vector<FileId> &cover_file_ids, const vector<string> &cover_file_references,
+                                    bool expect_index, std::function<void(size_t pos, FileId file_id)> on_error);
+
+  bool process_file_reference_error(const Status &status, const vector<FileId> &file_ids,
+                                    const vector<string> &file_references, const vector<FileId> &cover_file_ids,
+                                    const vector<string> &cover_file_references, bool expect_index,
+                                    std::function<void(size_t pos, FileId file_id)> on_error);
 
   FileSourceId create_message_file_source(MessageFullId message_full_id);
   FileSourceId create_user_photo_file_source(UserId user_id, int64 photo_id);
@@ -80,6 +95,10 @@ class FileReferenceManager final : public Actor {
   FileSourceId create_bot_media_preview_info_file_source(UserId bot_user_id, const string &language_code);
   FileSourceId create_story_album_file_source(StoryAlbumFullId story_album_full_id);
   FileSourceId create_user_saved_music_file_source(UserId user_id, int64 document_id, int64 access_hash);
+  FileSourceId create_draft_message_file_source(DialogId dialog_id, MessageTopic topic);
+  FileSourceId create_rich_message_file_source(MessageFullId message_full_id);
+  FileSourceId create_welcome_messages_file_source(DialogId dialog_id);
+  FileSourceId create_community_full_file_source(CommunityId community_id);
 
   using NodeId = FileId;
   void repair_file_reference(NodeId node_id, Promise<> promise);
@@ -88,7 +107,7 @@ class FileReferenceManager final : public Actor {
 
   td_api::object_ptr<td_api::message> get_message_object(FileSourceId file_source_id) const;
 
-  static void reload_photo(PhotoSizeSource source, Promise<Unit> promise);
+  void reload_photo(PhotoSizeSource source, Promise<Unit> promise);
 
   bool add_file_source(NodeId node_id, FileSourceId file_source_id, const char *source);
 
@@ -213,6 +232,19 @@ class FileReferenceManager final : public Actor {
     int64 access_hash;
     UserId user_id;
   };
+  struct FileSourceDraftMessage {
+    DialogId dialog_id;
+    MessageTopic topic;
+  };
+  struct FileSourceRichMessage {
+    MessageFullId message_full_id;
+  };
+  struct FileSourceWelcomeMessages {
+    DialogId dialog_id;
+  };
+  struct FileSourceCommunityFull {
+    CommunityId community_id;
+  };
 
   // append only
   using FileSource =
@@ -221,13 +253,15 @@ class FileReferenceManager final : public Actor {
               FileSourceBackground, FileSourceChatFull, FileSourceChannelFull, FileSourceAppConfig,
               FileSourceSavedRingtones, FileSourceUserFull, FileSourceAttachMenuBot, FileSourceWebApp, FileSourceStory,
               FileSourceQuickReplyMessage, FileSourceStarTransaction, FileSourceBotMediaPreview,
-              FileSourceBotMediaPreviewInfo, FileSourceStoryAlbum, FileSourceUserSavedMusic>;
+              FileSourceBotMediaPreviewInfo, FileSourceStoryAlbum, FileSourceUserSavedMusic, FileSourceDraftMessage,
+              FileSourceRichMessage, FileSourceWelcomeMessages, FileSourceCommunityFull>;
   WaitFreeVector<FileSource> file_sources_;
 
   int64 query_generation_{0};
 
   WaitFreeHashMap<NodeId, unique_ptr<Node>, FileIdHash> nodes_;
 
+  Td *td_;
   ActorShared<> parent_;
 
   Node &add_node(NodeId node_id);
@@ -240,6 +274,9 @@ class FileReferenceManager final : public Actor {
   FileSourceId add_file_source_id(T &source, Slice source_str);
 
   FileSourceId get_current_file_source_id() const;
+
+  bool on_file_reference_error(const Status &status, size_t pos, FileId file_id, const string &file_reference,
+                               std::function<void(size_t pos, FileId file_id)> &&on_error);
 
   void tear_down() final;
 };

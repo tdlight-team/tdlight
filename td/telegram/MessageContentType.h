@@ -107,7 +107,11 @@ enum class MessageContentType : int32 {
   ManagedBotCreated,
   PollAppendAnswer,
   PollDeleteAnswer,
-  RichText
+  RichText,
+  ChangeCommunity,
+  ChatJoinedViaCommunity,
+  GramTransfer,
+  WalletTonConnectRequest
 };
 // increase MessageUnsupported::CURRENT_VERSION each time a new message content type is added
 
@@ -123,7 +127,11 @@ bool is_allowed_poll_content(MessageContentType content_type);
 
 bool is_allowed_poll_option_content(MessageContentType content_type);
 
+bool is_allowed_ephemeral_message_content(MessageContentType content_type);
+
 bool can_message_content_have_multiple_files(MessageContentType content_type);
+
+bool can_message_content_have_fact_check(MessageContentType content_type);
 
 bool can_be_secret_message_content(MessageContentType content_type);
 
@@ -132,6 +140,8 @@ bool can_be_local_message_content(MessageContentType content_type);
 bool is_service_message_content(MessageContentType content_type);
 
 bool is_editable_message_content(MessageContentType content_type);
+
+bool is_editable_media_message_content(MessageContentType content_type);
 
 bool is_supported_reply_message_content(MessageContentType content_type);
 

@@ -247,6 +247,7 @@
       <option>Ubuntu 20</option>
       <option>Ubuntu 22</option>
       <option>Ubuntu 24</option>
+      <option>Ubuntu 26</option>
       <option>Other</option>
     </select>
     <p></p>
@@ -644,7 +645,7 @@ function onOptionsChanged() {
   var use_vcpkg = os_windows;
 
   var use_lto = false;
-  if (!use_msvc && language !== 'Go' && language !== 'Java' && language !== 'Kotlin' && (os_mac || (os_linux && (linux_distro === 'Ubuntu 18' || linux_distro === 'Ubuntu 20' || linux_distro === 'Ubuntu 22' || linux_distro === 'Ubuntu 24' || linux_distro === 'Other')))) {
+  if (!use_msvc && language !== 'Go' && language !== 'Java' && language !== 'Kotlin' && (os_mac || (os_linux && (linux_distro === 'Ubuntu 18' || linux_distro === 'Ubuntu 20' || linux_distro === 'Ubuntu 22' || linux_distro === 'Ubuntu 24' || linux_distro === 'Ubuntu 26' || linux_distro === 'Other')))) {
     document.getElementById('buildLtoDiv').style.display = 'block';
     use_lto = document.getElementById('buildLtoCheckbox').checked;
   } else {
@@ -805,6 +806,8 @@ function onOptionsChanged() {
         return '-14';
       case 'Ubuntu 24':
         return '-18';
+      case 'Ubuntu 26':
+        return '-21';
       default:
         return ''; // use default version
     }
@@ -815,6 +818,7 @@ function onOptionsChanged() {
       case 'Ubuntu 20':
       case 'Ubuntu 22':
       case 'Ubuntu 24':
+      case 'Ubuntu 26':
         return getClangVersionSuffix();
       default:
         return ''; // use default version
@@ -873,6 +877,7 @@ function onOptionsChanged() {
       case 'Ubuntu 20':
       case 'Ubuntu 22':
       case 'Ubuntu 24':
+      case 'Ubuntu 26':
         if (linux_distro.includes('Debian') && !use_root) {
           commands.push('su -');
         }
@@ -883,10 +888,7 @@ function onOptionsChanged() {
           packages += ' default-jdk';
         }
         if (use_clang) {
-          packages += ' clang' + getClangVersionSuffix() + ' libc++' + getLibcplusplusVersionSuffix() + '-dev';
-          if (linux_distro === 'Debian 10+' || linux_distro === 'Ubuntu 18' || linux_distro === 'Ubuntu 20' || linux_distro === 'Ubuntu 22' || linux_distro === 'Ubuntu 24') {
-            packages += ' libc++abi' + getLibcplusplusVersionSuffix() + '-dev';
-          }
+          packages += ' clang' + getClangVersionSuffix() + ' libc++' + getLibcplusplusVersionSuffix() + '-dev libc++abi' + getLibcplusplusVersionSuffix() + '-dev';
         } else {
           packages += ' g++';
         }
@@ -936,10 +938,10 @@ function onOptionsChanged() {
   if (use_vcpkg) {
     commands.push('git clone https://github.com/Microsoft/vcpkg.git');
     commands.push('cd vcpkg');
-    commands.push('git checkout bc3512a509f9d29b37346a7e7e929f9a26e66c7e');
+    commands.push('git checkout c3867e714dd3a51c272826eea77267876517ed99');
     commands.push(local + 'bootstrap-vcpkg.bat');
     if (target === 'C++/CX') {
-      commands.push(local + 'vcpkg.exe install gperf:x86-windows openssl:arm-uwp openssl:arm64-uwp openssl:x64-uwp openssl:x86-uwp zlib:arm-uwp zlib:arm64-uwp zlib:x64-uwp zlib:x86-uwp');
+      commands.push(local + 'vcpkg.exe install gperf:x86-windows openssl:arm64-uwp openssl:x64-uwp openssl:x86-uwp zlib:arm64-uwp zlib:x64-uwp zlib:x86-uwp');
     } else {
       if (build_64bit) {
         commands.push(local + 'vcpkg.exe install gperf:x64-windows openssl:x64-windows zlib:x64-windows');

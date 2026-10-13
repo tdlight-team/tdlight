@@ -49,6 +49,7 @@ class CallbackQueriesManager;
 class ChannelRecommendationManager;
 class ChatManager;
 class CommonDialogManager;
+class CommunityManager;
 class ConfigManager;
 class ConnectionStateManager;
 class CountryInfoManager;
@@ -60,6 +61,7 @@ class DialogManager;
 class DialogParticipantManager;
 class DocumentsManager;
 class DownloadManager;
+class DraftMessageManager;
 class FileManager;
 class FileReferenceManager;
 class ForumTopicManager;
@@ -105,6 +107,7 @@ class SuggestedActionManager;
 class TermsOfServiceManager;
 class ThemeManager;
 class TimeZoneManager;
+class TonWalletManager;
 class TopDialogManager;
 class TranscriptionManager;
 class TranslationManager;
@@ -116,6 +119,7 @@ class VoiceNotesManager;
 class WebAppManager;
 class WebBrowserManager;
 class WebPagesManager;
+class WelcomeMessageManager;
 
 extern int VERBOSITY_NAME(td_init);
 extern int VERBOSITY_NAME(td_requests);
@@ -193,6 +197,8 @@ class Td final : public Actor {
   ActorOwn<ChatManager> chat_manager_actor_;
   unique_ptr<CommonDialogManager> common_dialog_manager_;
   ActorOwn<CommonDialogManager> common_dialog_manager_actor_;
+  unique_ptr<CommunityManager> community_manager_;
+  ActorOwn<CommunityManager> community_manager_actor_;
   unique_ptr<ConnectionStateManager> connection_state_manager_;
   ActorOwn<ConnectionStateManager> connection_state_manager_actor_;
   unique_ptr<CountryInfoManager> country_info_manager_;
@@ -207,6 +213,8 @@ class Td final : public Actor {
   ActorOwn<DialogManager> dialog_manager_actor_;
   unique_ptr<DialogParticipantManager> dialog_participant_manager_;
   ActorOwn<DialogParticipantManager> dialog_participant_manager_actor_;
+  unique_ptr<DraftMessageManager> draft_message_manager_;
+  ActorOwn<DraftMessageManager> draft_message_manager_actor_;
   unique_ptr<DownloadManager> download_manager_;
   ActorOwn<DownloadManager> download_manager_actor_;
   unique_ptr<FileManager> file_manager_;
@@ -275,6 +283,8 @@ class Td final : public Actor {
   ActorOwn<ThemeManager> theme_manager_actor_;
   unique_ptr<TimeZoneManager> time_zone_manager_;
   ActorOwn<TimeZoneManager> time_zone_manager_actor_;
+  unique_ptr<TonWalletManager> ton_wallet_manager_;
+  ActorOwn<TonWalletManager> ton_wallet_manager_actor_;
   unique_ptr<TopDialogManager> top_dialog_manager_;
   ActorOwn<TopDialogManager> top_dialog_manager_actor_;
   unique_ptr<TranscriptionManager> transcription_manager_;
@@ -295,6 +305,8 @@ class Td final : public Actor {
   ActorOwn<WebBrowserManager> web_browser_manager_actor_;
   unique_ptr<WebPagesManager> web_pages_manager_;
   ActorOwn<WebPagesManager> web_pages_manager_actor_;
+  unique_ptr<WelcomeMessageManager> welcome_message_manager_;
+  ActorOwn<WelcomeMessageManager> welcome_message_manager_actor_;
 
   unique_ptr<MemoryManager> memory_manager_;
   ActorOwn<MemoryManager> memory_manager_actor_;

@@ -15,6 +15,7 @@
 #include "td/telegram/BotVerifierSettings.h"
 #include "td/telegram/BusinessConnectionId.h"
 #include "td/telegram/ChannelId.h"
+#include "td/telegram/CommunityId.h"
 #include "td/telegram/Contact.h"
 #include "td/telegram/CustomEmojiId.h"
 #include "td/telegram/DialogId.h"
@@ -134,6 +135,8 @@ class UserManager final : public Actor {
   void on_update_user_phone_number(UserId user_id, string &&phone_number);
 
   void register_suggested_profile_photo(const Photo &photo);
+
+  void on_update_user_linked_community_id(UserId user_id, CommunityId linked_community_id);
 
   void on_update_user_emoji_status(UserId user_id, telegram_api::object_ptr<telegram_api::EmojiStatus> &&emoji_status);
 
@@ -414,6 +417,10 @@ class UserManager final : public Actor {
 
   void reorder_usernames(vector<string> &&usernames, Promise<Unit> &&promise);
 
+  void add_bot_username(UserId bot_user_id, string &&username, Promise<Unit> &&promise);
+
+  void delete_bot_username(UserId bot_user_id, Promise<Unit> &&promise);
+
   void toggle_bot_username_is_active(UserId bot_user_id, string &&username, bool is_active, Promise<Unit> &&promise);
 
   void reorder_bot_usernames(UserId bot_user_id, vector<string> &&usernames, Promise<Unit> &&promise);
@@ -457,8 +464,7 @@ class UserManager final : public Actor {
 
   void is_saved_music(FileId file_id, Promise<Unit> &&promise);
 
-  void add_new_saved_music(const td_api::object_ptr<td_api::InputFile> &audio, int32 duration, const string &title,
-                           const string &performer, Promise<Unit> &&promise);
+  void add_new_saved_music(td_api::object_ptr<td_api::inputAudio> &&input_audio, Promise<Unit> &&promise);
 
   void on_uploaded_saved_music_file(FileUploadId file_upload_id, bool is_url,
                                     telegram_api::object_ptr<telegram_api::MessageMedia> media,
@@ -618,6 +624,7 @@ class UserManager final : public Actor {
     unique_ptr<PeerColorCollectible> peer_color_collectible;
     AccentColorId profile_accent_color_id;
     CustomEmojiId profile_background_custom_emoji_id;
+    CommunityId linked_community_id;
 
     int32 was_online = 0;
     int32 local_was_online = 0;
@@ -665,6 +672,9 @@ class UserManager final : public Actor {
     bool stories_hidden = false;
     bool contact_require_premium = false;
     bool has_live_story = false;
+    bool is_noforwards_inited = false;
+    bool noforwards_my_enabled = false;
+    bool noforwards_peer_enabled = false;
 
     bool is_photo_inited = false;
 
@@ -747,6 +757,7 @@ class UserManager final : public Actor {
 
     ChannelId personal_channel_id;
     ProfileTab main_profile_tab = ProfileTab::Default;
+    CommunityId linked_community_id;
 
     unique_ptr<BotInfo> bot_info;
     unique_ptr<BusinessInfo> business_info;
@@ -970,6 +981,8 @@ class UserManager final : public Actor {
   void on_update_user_profile_colors(User *u, UserId user_id, AccentColorId accent_color_id,
                                      CustomEmojiId background_custom_emoji_id);
 
+  void on_update_user_linked_community_id(User *u, UserId user_id, CommunityId linked_community_id);
+
   void on_update_user_emoji_status(User *u, UserId user_id, unique_ptr<EmojiStatus> emoji_status);
 
   void on_update_user_story_ids_impl(User *u, UserId user_id,
@@ -1023,8 +1036,8 @@ class UserManager final : public Actor {
 
   void on_update_user_full_wallpaper_overridden(UserFull *user_full, bool wallpaper_overridden) const;
 
-  void on_update_user_full_noforwards(UserFull *user_full, bool update_my, bool noforwards_my_enabled, bool update_peer,
-                                      bool noforwards_peer_enabled) const;
+  void on_update_user_full_noforwards(UserFull *user_full, User *u, UserId user_id, bool update_my,
+                                      bool noforwards_my_enabled, bool update_peer, bool noforwards_peer_enabled);
 
   static void on_update_user_full_menu_button(UserFull *user_full,
                                               telegram_api::object_ptr<telegram_api::BotMenuButton> &&bot_menu_button);
@@ -1032,6 +1045,8 @@ class UserManager final : public Actor {
   static void on_update_user_full_has_preview_medias(UserFull *user_full, bool has_preview_medias);
 
   static void on_update_user_full_can_manage_emoji_status(UserFull *user_full, bool can_manage_emoji_status);
+
+  static void on_update_user_full_linked_community_id(UserFull *user_full, CommunityId linked_community_id);
 
   static void on_update_user_full_first_saved_music_file_id(UserFull *user_full, FileId first_saved_music_file_id);
 

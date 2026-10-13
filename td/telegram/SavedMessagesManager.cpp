@@ -15,6 +15,7 @@
 #include "td/telegram/DialogId.h"
 #include "td/telegram/DialogManager.h"
 #include "td/telegram/DraftMessage.h"
+#include "td/telegram/DraftMessageManager.h"
 #include "td/telegram/ForumTopicId.h"
 #include "td/telegram/Global.h"
 #include "td/telegram/MessageFullId.h"
@@ -798,7 +799,8 @@ void SavedMessagesManager::do_set_topic_unread_reaction_count(SavedMessagesTopic
 }
 
 void SavedMessagesManager::do_set_topic_draft_message(SavedMessagesTopic *topic,
-                                                      unique_ptr<DraftMessage> &&draft_message, bool from_update) {
+                                                      unique_ptr<DraftMessage> &&draft_message, bool from_update,
+                                                      bool need_delete_files) {
   if (td_->auth_manager_->is_bot()) {
     return;
   }
@@ -807,8 +809,14 @@ void SavedMessagesManager::do_set_topic_draft_message(SavedMessagesTopic *topic,
     return;
   }
 
+  auto old_file_ids = get_draft_message_file_ids(td_, topic->draft_message_);
   topic->draft_message_ = std::move(draft_message);
   topic->is_changed_ = true;
+  if (topic->dialog_id_ != DialogId()) {
+    td_->draft_message_manager_->change_draft_message_files(
+        topic->dialog_id_, MessageTopic::monoforum(topic->dialog_id_, topic->saved_messages_topic_id_), old_file_ids,
+        get_draft_message_file_ids(td_, topic->draft_message_), need_delete_files);
+  }
 }
 
 void SavedMessagesManager::on_topic_message_added(DialogId dialog_id, SavedMessagesTopicId saved_messages_topic_id,
@@ -961,7 +969,7 @@ void SavedMessagesManager::on_all_dialog_messages_deleted(DialogId dialog_id) {
     do_set_topic_is_marked_as_unread(topic, false);
     do_set_topic_unread_reaction_count(topic, 0);
     // do_set_topic_reply_markup(topic, MessageId());
-    do_set_topic_draft_message(topic, nullptr, false);
+    do_set_topic_draft_message(topic, nullptr, false, true);
     topic->pinned_order_ = 0;
     on_topic_changed(topic_list, topic, "on_all_dialog_messages_deleted");
   }
@@ -1029,8 +1037,13 @@ void SavedMessagesManager::clear_monoforum_topic_draft_by_sent_message(DialogId 
       return;
     }
   }
-  do_set_topic_draft_message(topic, nullptr, false);
-  on_topic_changed(topic_list, topic, "clear_monoforum_topic_draft_by_sent_message");
+  // do_set_topic_draft_message(topic, nullptr, false, false);
+  if (topic->draft_message_ != nullptr) {
+    topic->draft_message_ = nullptr;
+    topic->is_changed_ = true;
+    // do not call change_draft_message_files to keep file source identifiers
+    on_topic_changed(topic_list, topic, "clear_monoforum_topic_draft_by_sent_message");
+  }
 }
 
 void SavedMessagesManager::repair_topic_unread_count(const SavedMessagesTopic *topic) {
@@ -1246,7 +1259,7 @@ void SavedMessagesManager::on_update_topic_draft_message(
     }
   }
 
-  do_set_topic_draft_message(topic, get_draft_message(td_, std::move(draft_message)), true);
+  do_set_topic_draft_message(topic, get_draft_message(td_, std::move(draft_message)), true, true);
 
   on_topic_changed(topic_list, topic, "on_update_topic_draft_message");
 }
@@ -1524,9 +1537,10 @@ void SavedMessagesManager::get_saved_dialogs(TopicList *topic_list, int32 limit,
   CHECK(topic_list != nullptr);
   topic_list->load_queries_.push_back(std::move(promise));
   if (topic_list->load_queries_.size() == 1) {
-    auto query_promise = PromiseCreator::lambda([actor_id = actor_id(this), topic_list](Result<Unit> &&result) {
-      send_closure(actor_id, &SavedMessagesManager::on_get_saved_dialogs, topic_list, std::move(result));
-    });
+    auto query_promise =
+        PromiseCreator::lambda([actor_id = actor_id(this), dialog_id = topic_list->dialog_id_](Result<Unit> &&result) {
+          send_closure(actor_id, &SavedMessagesManager::on_get_saved_dialogs, dialog_id, std::move(result));
+        });
     td_->create_handler<GetSavedDialogsQuery>(std::move(query_promise))
         ->send(topic_list->dialog_id_, topic_list->generation_, topic_list->offset_date_,
                topic_list->offset_message_id_, topic_list->offset_dialog_id_, limit);
@@ -1564,9 +1578,12 @@ SavedMessagesManager::SavedMessagesTopicInfo SavedMessagesManager::get_saved_mes
   return result;
 }
 
-void SavedMessagesManager::on_get_saved_dialogs(TopicList *topic_list, Result<Unit> &&result) {
+void SavedMessagesManager::on_get_saved_dialogs(DialogId dialog_id, Result<Unit> &&result) {
   G()->ignore_result_if_closing(result);
-  CHECK(topic_list != nullptr);
+  auto topic_list = get_topic_list(dialog_id);
+  if (topic_list == nullptr) {
+    return;
+  }
   if (result.is_error()) {
     fail_promises(topic_list->load_queries_, result.move_as_error());
   } else {
@@ -1693,7 +1710,6 @@ void SavedMessagesManager::process_saved_messages_topics(
       total_count--;
       continue;
     }
-    added_saved_messages_topic_ids.push_back(saved_messages_topic_id);
 
     auto last_topic_message_id = topic_info.last_topic_message_id_;
     auto message_date = 0;
@@ -1732,6 +1748,7 @@ void SavedMessagesManager::process_saved_messages_topics(
       total_count--;
       continue;
     }
+    added_saved_messages_topic_ids.push_back(saved_messages_topic_id);
 
     auto *topic = add_topic(topic_list, saved_messages_topic_id, true);
     if (last_topic_message_id.is_valid() && !topic->ordered_messages_.has_message(last_topic_message_id)) {
@@ -1772,7 +1789,7 @@ void SavedMessagesManager::process_saved_messages_topics(
       do_set_topic_unread_reaction_count(topic, topic_info.unread_reaction_count_);
       do_set_topic_is_marked_as_unread(topic, topic_info.is_marked_as_unread_);
       do_set_topic_nopaid_messages_exception(topic, topic_info.nopaid_messages_exception_);
-      do_set_topic_draft_message(topic, std::move(topic_info.draft_message_), true);
+      do_set_topic_draft_message(topic, std::move(topic_info.draft_message_), true, true);
     }
     on_topic_changed(topic_list, topic, "on_get_saved_messages_topics");
   }
@@ -2474,11 +2491,11 @@ Status SavedMessagesManager::set_monoforum_topic_draft_message(DialogId dialog_i
     return Status::Error(400, "Topic can't have draft");
   }
 
-  do_set_topic_draft_message(topic, std::move(draft_message), false);
+  do_set_topic_draft_message(topic, std::move(draft_message), false, true);
 
   if (topic->is_changed_) {
-    save_draft_message(td_, dialog_id, MessageTopic::monoforum(dialog_id, saved_messages_topic_id),
-                       topic->draft_message_, Auto());
+    td_->draft_message_manager_->save_draft_message(
+        dialog_id, MessageTopic::monoforum(dialog_id, saved_messages_topic_id), topic->draft_message_, Auto());
     on_topic_changed(topic_list, topic, "set_monoforum_topic_draft_message");
   }
   return Status::OK();
