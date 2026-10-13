@@ -345,7 +345,7 @@ set(TD_MTPROTO_HEADER
   td/tl/tl_object_store.h
 )
 
-set(TDLIB_SOURCE_PART1
+set(TDLIB_SOURCE_PART1_A
   td/telegram/AccountManager.cpp
   td/telegram/ActiveStoryState.cpp
   td/telegram/AffiliateType.cpp
@@ -497,6 +497,9 @@ set(TDLIB_SOURCE_PART1
   td/telegram/InputDialogId.cpp
   td/telegram/InputGroupCall.cpp
   td/telegram/InputGroupCallId.cpp
+)
+
+set(TDLIB_SOURCE_PART1_B
   td/telegram/InputInvoice.cpp
   td/telegram/InputMessageText.cpp
   td/telegram/JoinChatBotResult.cpp
@@ -544,6 +547,8 @@ set(TDLIB_SOURCE_PART1
   td/telegram/misc.cpp
   td/telegram/MissingInvitee.cpp
 )
+set(TDLIB_SOURCE_PART1 ${TDLIB_SOURCE_PART1_A} ${TDLIB_SOURCE_PART1_B})
+
 set(TDLIB_SOURCE_PART2
   td/telegram/MemoryManager.cpp
   td/telegram/net/AuthDataShared.cpp
@@ -1384,7 +1389,8 @@ endif()
 
 # tdcore - internal TDLib interface
 if (MSVC AND TD_ENABLE_LTO)
-  add_library(tdcore_part1 STATIC ${TDLIB_SOURCE_PART1})
+  # MSVC archives have a 4 GiB limit; keep the LTO object groups below it.
+  add_library(tdcore_part1 STATIC ${TDLIB_SOURCE_PART1_A})
   target_include_directories(tdcore_part1 PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<BUILD_INTERFACE:${TL_TD_AUTO_INCLUDE_DIR}>)
   target_link_libraries(tdcore_part1 PUBLIC tdapi tdnet tddb tdactor tde2e tdutils PRIVATE tdmtproto)
 
@@ -1392,10 +1398,14 @@ if (MSVC AND TD_ENABLE_LTO)
   target_include_directories(tdcore_part2 PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<BUILD_INTERFACE:${TL_TD_AUTO_INCLUDE_DIR}>)
   target_link_libraries(tdcore_part2 PUBLIC tdapi tdnet tddb tdactor tde2e tdutils PRIVATE tdmtproto)
 
-  add_library(tdcore INTERFACE)
-  target_link_libraries(tdcore INTERFACE tdcore_part1 tdcore_part2)
+  add_library(tdcore_part3 STATIC ${TDLIB_SOURCE_PART1_B})
+  target_include_directories(tdcore_part3 PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<BUILD_INTERFACE:${TL_TD_AUTO_INCLUDE_DIR}>)
+  target_link_libraries(tdcore_part3 PUBLIC tdapi tdnet tddb tdactor tde2e tdutils PRIVATE tdmtproto)
 
-  set(TD_CORE_PART_TARGETS tdcore_part1 tdcore_part2)
+  add_library(tdcore INTERFACE)
+  target_link_libraries(tdcore INTERFACE tdcore_part1 tdcore_part2 tdcore_part3)
+
+  set(TD_CORE_PART_TARGETS tdcore_part1 tdcore_part2 tdcore_part3)
 else()
   add_library(tdcore STATIC ${TDLIB_SOURCE})
   target_include_directories(tdcore PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<BUILD_INTERFACE:${TL_TD_AUTO_INCLUDE_DIR}>)
