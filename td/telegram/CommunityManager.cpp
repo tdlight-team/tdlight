@@ -912,7 +912,7 @@ void CommunityManager::on_update_community_photo(Community *c, CommunityId commu
 
 void CommunityManager::on_update_community_photo(Community *c, CommunityId community_id, DialogPhoto &&photo,
                                                  bool invalidate_photo_cache) {
-  if (td_->auth_manager_->is_bot()) {
+  if (td_->auth_manager_->is_bot() || G()->get_option_boolean("disable_minithumbnails")) {
     photo.minithumbnail.clear();
   }
 
@@ -1395,6 +1395,20 @@ telegram_api::object_ptr<telegram_api::InputPeer> CommunityManager::get_input_pe
     access_hash = c->access_hash;
   }
   return telegram_api::make_object<telegram_api::inputPeerChannel>(community_id.get(), access_hash);
+}
+
+void CommunityManager::memory_stats(vector<string> &output) {
+  output.push_back("\"communities_\":");
+  output.push_back(std::to_string(communities_.calc_size()));
+  output.push_back(",");
+  output.push_back("\"unknown_communities_\":");
+  output.push_back(std::to_string(unknown_communities_.size()));
+  output.push_back(",");
+  output.push_back("\"load_community_from_database_queries_\":");
+  output.push_back(std::to_string(load_community_from_database_queries_.size()));
+  output.push_back(",");
+  output.push_back("\"loaded_from_database_communities_\":");
+  output.push_back(std::to_string(loaded_from_database_communities_.size()));
 }
 
 void CommunityManager::get_current_state(vector<td_api::object_ptr<td_api::Update>> &updates) const {

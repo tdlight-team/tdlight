@@ -3825,10 +3825,12 @@ void UpdatesManager::on_update(tl_object_ptr<telegram_api::updateEditEphemeralMe
 
 void UpdatesManager::on_update(tl_object_ptr<telegram_api::updateDeleteEphemeralMessages> update,
                                Promise<Unit> &&promise) {
-  DialogId dialog_id(update->peer_);
-  auto ephemeral_message_ids = EphemeralMessageId::get_ephemeral_message_ids(update->ids_);
-  td_->messages_manager_->on_delete_ephemeral_messages(dialog_id, ephemeral_message_ids);
-  td_->welcome_message_manager_->on_delete_welcome_messages(dialog_id, ephemeral_message_ids);
+  if (!G()->get_option_boolean("ignore_server_deletes_and_reads", false)) {
+    DialogId dialog_id(update->peer_);
+    auto ephemeral_message_ids = EphemeralMessageId::get_ephemeral_message_ids(update->ids_);
+    td_->messages_manager_->on_delete_ephemeral_messages(dialog_id, ephemeral_message_ids);
+    td_->welcome_message_manager_->on_delete_welcome_messages(dialog_id, ephemeral_message_ids);
+  }
   promise.set_value(Unit());
 }
 

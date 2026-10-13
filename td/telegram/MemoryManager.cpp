@@ -13,6 +13,7 @@
 #include "td/telegram/AccessRights.h"
 #include "td/telegram/AuthManager.h"
 #include "td/telegram/ChatManager.h"
+#include "td/telegram/CommunityManager.h"
 #include "td/telegram/ConfigManager.h"
 #include "td/telegram/DialogId.h"
 #include "td/telegram/Document.h"
@@ -110,6 +111,12 @@ void MemoryManager::get_memory_stats(bool full, Promise<MemoryStats> promise) {
 
   output.push_back("\"chat_manager_\":{");
   td_->chat_manager_->memory_stats(output);
+  output.push_back("}");
+
+  output.push_back(",");
+
+  output.push_back("\"community_manager_\":{");
+  td_->community_manager_->memory_stats(output);
   output.push_back("}");
 
   output.push_back(",");
