@@ -5056,10 +5056,6 @@ bool MessagesManager::has_unread_poll_votes(DialogId dialog_id, const Message *m
 }
 
 void MessagesManager::on_message_reply_info_changed(DialogId dialog_id, const Message *m) const {
-  if (td_->auth_manager_->is_bot()) {
-    return;
-  }
-
   if (is_visible_message_reply_info(dialog_id, m)) {
     send_update_message_interaction_info(dialog_id, m);
   }
