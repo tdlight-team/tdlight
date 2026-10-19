@@ -525,12 +525,14 @@ bool MessageReactions::are_empty() const {
 
 unique_ptr<MessageReactions> MessageReactions::get_message_reactions(
     Td *td, telegram_api::object_ptr<telegram_api::messageReactions> &&reactions, bool is_bot) {
-  if (reactions == nullptr || is_bot) {
+  if (reactions == nullptr) {
     return nullptr;
   }
 
   auto result = make_unique<MessageReactions>();
-  result->can_get_added_reactions_ = reactions->can_see_list_;
+  // Bots can receive passive snapshots, but cannot request the reaction sender list.
+  result->can_get_added_reactions_ = !is_bot && reactions->can_see_list_;
+  result->need_polling_ = !is_bot;
   result->is_min_ = reactions->min_;
   result->are_tags_ = reactions->reactions_as_tags_;
 
@@ -583,7 +585,7 @@ unique_ptr<MessageReactions> MessageReactions::get_message_reactions(
         if (dialog_id == my_dialog_id) {
           my_recent_chooser_dialog_id = dialog_id;
         }
-        if (peer_reaction->unread_) {
+        if (!is_bot && peer_reaction->unread_) {
           result->unread_reactions_.emplace_back(std::move(peer_reaction_type), dialog_id, peer_reaction->big_);
         }
         if (recent_chooser_dialog_ids.size() == MessageReaction::MAX_RECENT_CHOOSERS) {

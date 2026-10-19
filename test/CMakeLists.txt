@@ -8,6 +8,7 @@ set(TD_TEST_SOURCE
   ${CMAKE_CURRENT_SOURCE_DIR}/http.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/link.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/message_entities.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/message_reactions.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mtproto.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/poll.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/query_merger.cpp

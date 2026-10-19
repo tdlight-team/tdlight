@@ -4861,10 +4861,6 @@ void MessagesManager::update_message_interaction_info(MessageFullId message_full
                                                       int32 forward_count, bool has_reply_info,
                                                       tl_object_ptr<telegram_api::messageReplies> &&reply_info,
                                                       bool has_reactions, unique_ptr<MessageReactions> &&reactions) {
-  if (td_->auth_manager_->is_bot()) {
-    return;
-  }
-
   auto dialog_id = message_full_id.get_dialog_id();
   Dialog *d = get_dialog_force(dialog_id, "update_message_interaction_info");
   if (d == nullptr) {
@@ -4874,8 +4870,8 @@ void MessagesManager::update_message_interaction_info(MessageFullId message_full
   Message *m = get_message_force(d, message_id, "update_message_interaction_info");
   if (m == nullptr) {
     LOG(INFO) << "Ignore message interaction info about unknown " << message_full_id;
-    if (!message_id.is_scheduled() && d->last_new_message_id.is_valid() && message_id > d->last_new_message_id &&
-        dialog_id.get_type() == DialogType::Channel) {
+    if (!td_->auth_manager_->is_bot() && !message_id.is_scheduled() && d->last_new_message_id.is_valid() &&
+        message_id > d->last_new_message_id && dialog_id.get_type() == DialogType::Channel) {
       get_channel_difference(dialog_id, d->pts, 0, message_id, true, "update_message_interaction_info");
     }
     return;
@@ -4996,6 +4992,9 @@ bool MessagesManager::is_visible_message_reply_info(DialogId dialog_id, const Me
   if (!m->message_id.is_valid()) {
     return false;
   }
+  if (td_->auth_manager_->is_bot()) {
+    return m->message_id.is_server() && !m->reply_info.is_empty();
+  }
   bool is_broadcast = td_->dialog_manager_->is_broadcast_channel(dialog_id);
   if (!m->message_id.is_server() && !(is_broadcast && m->message_id.is_yet_unsent())) {
     return false;
@@ -5018,6 +5017,11 @@ bool MessagesManager::is_visible_message_reply_info(DialogId dialog_id, const Me
 bool MessagesManager::is_visible_message_reactions(DialogId dialog_id, const Message *m) const {
   if (m == nullptr) {
     return false;
+  }
+
+  // A server-provided bot snapshot is independent of the ability to add reactions.
+  if (td_->auth_manager_->is_bot()) {
+    return m->message_id.is_server();
   }
 
   const Dialog *d = get_dialog(dialog_id);
@@ -5064,8 +5068,11 @@ void MessagesManager::on_message_reply_info_changed(DialogId dialog_id, const Me
 td_api::object_ptr<td_api::messageInteractionInfo> MessagesManager::get_message_interaction_info_object(
     DialogId dialog_id, const Message *m) const {
   bool is_visible_reply_info = is_visible_message_reply_info(dialog_id, m);
+  // Keep an explicit empty bot snapshot distinct from unavailable reaction information.
   bool has_reactions =
-      m->reactions != nullptr && !m->reactions->are_empty() && is_visible_message_reactions(dialog_id, m);
+      m->reactions != nullptr &&
+      (!m->reactions->are_empty() || (td_->auth_manager_->is_bot() && m->message_id.is_server())) &&
+      is_visible_message_reactions(dialog_id, m);
   if (m->view_count == 0 && m->forward_count == 0 && !is_visible_reply_info && !has_reactions) {
     return nullptr;
   }
@@ -5175,10 +5182,6 @@ bool MessagesManager::update_message_interaction_info(Dialog *d, Message *m, int
                                                       bool has_reply_info, MessageReplyInfo &&reply_info,
                                                       bool has_reactions, unique_ptr<MessageReactions> &&reactions,
                                                       const char *source) {
-  if (td_->auth_manager_->is_bot()) {
-    return false;
-  }
-
   CHECK(d != nullptr);
   CHECK(m != nullptr);
   auto dialog_id = d->dialog_id;
@@ -10172,10 +10175,10 @@ void MessagesManager::process_viewed_message(Dialog *d, const vector<MessageId> 
     Message *m = get_message_force(d, message_id, "on_update_viewed_messages_timeout");
     CHECK(m != nullptr);
     CHECK(m->message_id.is_server());
-    if (need_poll_message_reactions(d, m)) {
+    if (!td_->auth_manager_->is_bot() && need_poll_message_reactions(d, m)) {
       reaction_message_ids.push_back(m->message_id);
     }
-    if (!is_first && m->view_count > 0) {
+    if (!td_->auth_manager_->is_bot() && !is_first && m->view_count > 0) {
       views_message_ids.push_back(m->message_id);
     }
     if (need_poll_message_content_extended_media(m->content.get())) {
@@ -15513,7 +15516,7 @@ void MessagesManager::get_message_properties(DialogId dialog_id, MessageId messa
   auto can_edit_suggested_post_info = can_add_message_offer(dialog_id, m, false, true);
   auto can_get_author = can_get_message_author(dialog_id, m);
   auto can_get_statistics = can_get_message_statistics(dialog_id, m);
-  auto can_get_message_thread = get_top_thread_message_full_id(d, m, false).is_ok();
+  auto can_get_message_thread = !is_bot && get_top_thread_message_full_id(d, m, false).is_ok();
   auto can_get_poll_vote_statistics = can_get_message_poll_vote_statistics(dialog_id, m);
   auto can_get_read_date = can_get_message_read_date(d, m).is_ok();
   auto can_get_video_advertisements = can_get_message_video_advertisements(dialog_id, m);
@@ -19626,10 +19629,11 @@ unique_ptr<MessagesManager::Message> MessagesManager::parse_message(Dialog *d, M
     return nullptr;
   }
   if (m->reactions != nullptr) {
-    if (td_->auth_manager_->is_bot() || m->available_reactions_generation < d->available_reactions_generation) {
+    if (!td_->auth_manager_->is_bot() && m->available_reactions_generation < d->available_reactions_generation) {
       m->reactions = nullptr;
       m->available_reactions_generation = 0;
-    } else if (m->available_reactions_generation > d->available_reactions_generation &&
+    } else if (!td_->auth_manager_->is_bot() &&
+               m->available_reactions_generation > d->available_reactions_generation &&
                m->available_reactions_generation - d->available_reactions_generation < 1000000000) {
       switch (dialog_id.get_type()) {
         case DialogType::Chat:
@@ -20844,7 +20848,7 @@ td_api::object_ptr<td_api::message> MessagesManager::get_message_object(DialogId
                           ? nullptr
                           : m->forward_info->get_message_forward_info_object(td_, is_from_saved_messages);
   auto import_info = m->forward_info == nullptr ? nullptr : m->forward_info->get_message_import_info_object();
-  auto interaction_info = is_bot ? nullptr : get_message_interaction_info_object(dialog_id, m);
+  auto interaction_info = get_message_interaction_info_object(dialog_id, m);
   auto unread_reactions = get_unread_reactions_object(dialog_id, m);
   auto fact_check = get_message_fact_check_object(m);
   auto suggested_post = get_message_suggested_post_info_object(dialog_id, m);
@@ -27165,7 +27169,7 @@ void MessagesManager::send_update_message_edited(DialogId dialog_id, const Messa
 
 void MessagesManager::send_update_message_interaction_info(DialogId dialog_id, const Message *m) const {
   CHECK(m != nullptr);
-  if (td_->auth_manager_->is_bot() || !m->is_update_sent) {
+  if (!m->is_update_sent) {
     return;
   }
 

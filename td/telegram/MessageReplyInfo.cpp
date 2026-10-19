@@ -18,7 +18,7 @@
 
 namespace td {
 
-MessageReplyInfo::MessageReplyInfo(Td *td, tl_object_ptr<telegram_api::messageReplies> &&reply_info, bool is_bot) {
+MessageReplyInfo::MessageReplyInfo(Td *td, tl_object_ptr<telegram_api::messageReplies> &&reply_info, bool) {
   if (reply_info == nullptr) {
     return;
   }
@@ -26,7 +26,7 @@ MessageReplyInfo::MessageReplyInfo(Td *td, tl_object_ptr<telegram_api::messageRe
     LOG(ERROR) << "Receive wrong " << to_string(reply_info);
     return;
   }
-  if (is_bot || reply_info->channel_id_ == 777) {
+  if (reply_info->channel_id_ == 777) {
     is_dropped_ = true;
     return;
   }
